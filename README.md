@@ -35,6 +35,10 @@ Nas execuções seguintes, o banco já contém o administrador e a variável da 
 
 O ranking completo é exclusivo do administrador. Cada discente recebe somente sua própria colocação, notas e observação individual.
 
+O painel administrativo também permite gerar um relatório PDF protegido com os nomes dos discentes, matrículas, disciplinas, componentes lançados, totais, data de geração e paginação. O arquivo é destinado à conferência posterior e só pode ser baixado durante uma sessão administrativa válida.
+
+O calendário pode ser atualizado pelo administrador por meio da importação do PDF oficial da EFAS. O sistema aceita arquivos de até 5 MB, valida o conteúdo, identifica disciplinas, datas, horários, duração e marcações V.F/V.C e somente então substitui o calendário. Arquivos inválidos ou parcialmente reconhecidos são recusados sem modificar os dados existentes.
+
 ## Controle de versão
 
 O repositório mantém somente código e arquivos públicos. Banco de dados, senhas, logs e arquivos temporários são ignorados pelo `.gitignore`.

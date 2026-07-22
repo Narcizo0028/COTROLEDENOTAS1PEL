@@ -87,6 +87,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .admin-login { width: min(460px, 100%); margin-inline: auto; }
 .admin-login h1, .admin-dashboard-head h1 { margin: 0 0 28px; font: 500 clamp(2rem,4vw,3rem)/1.1 Georgia,serif; }
 .admin-dashboard-head, .panel-title { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.panel-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; }
 .admin-warning { margin-bottom: 24px; padding: 14px 18px; color: #493e1f; background: #fff4ca; border-left: 4px solid var(--gold); }
 .admin-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; align-items: start; }
 .admin-panel { padding: 25px; background: #fff; border-top: 4px solid var(--gold); border-radius: var(--radius); box-shadow: var(--shadow); }

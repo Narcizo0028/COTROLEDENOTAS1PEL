@@ -3,7 +3,7 @@ services:
     name: controle-notas-1-pelotao
     runtime: python
     plan: starter
-    buildCommand: echo "Sem dependencias externas"
+    buildCommand: pip install -r requirements.txt
     startCommand: python server.py
     healthCheckPath: /
     envVars:
