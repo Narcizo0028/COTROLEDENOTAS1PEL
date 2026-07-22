@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: controle-notas-1-pelotao
+    runtime: python
+    plan: starter
+    buildCommand: echo "Sem dependencias externas"
+    startCommand: python server.py
+    healthCheckPath: /
+    envVars:
+      - key: EFAS_HOST
+        value: 0.0.0.0
+      - key: EFAS_PORT
+        value: 10000
+      - key: EFAS_ADMIN_USER
+        value: administrador
+      - key: EFAS_INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: EFAS_COOKIE_SECURE
+        value: "1"
+    disk:
+      name: dados-notas
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
