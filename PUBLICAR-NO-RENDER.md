@@ -1,134 +1,57 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Portal institucional para consulta de calendário de provas e notas finais do CFS — 1º Pelotão.">
-  <meta name="theme-color" content="#1d1c18">
-  <title>Controle de Notas | CFS — 1º Pelotão</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+# Publicação nova e limpa no Render
 
-  <header class="site-header" id="topo">
-    <div class="topbar">Portal acadêmico oficial • CFS / 1º Pelotão</div>
-    <div class="nav-wrap container">
-      <a class="brand" href="#inicio" aria-label="Página inicial do CFS, 1º Pelotão">
-        <img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58">
-        <span><strong>Controle de Notas</strong><small>CFS • 1º Pelotão</small></span>
-      </a>
-      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="menu-principal" aria-label="Abrir menu">
-        <span></span><span></span><span></span>
-      </button>
-      <nav id="menu-principal" class="main-nav" aria-label="Navegação principal">
-        <a href="#inicio" class="active">Início</a>
-        <a href="#calendario">Calendário de provas</a>
-        <a href="#notas">Notas finais</a>
-        <a href="#administracao" class="nav-admin">Administração</a>
-      </nav>
-    </div>
-  </header>
+Esta pasta contém somente a aplicação necessária para o Render. Não contém o banco de dados, senhas, arquivos temporários ou configurações do Netlify.
 
-  <main id="conteudo">
-    <section class="hero" id="inicio" aria-labelledby="hero-title">
-      <div class="hero-pattern" aria-hidden="true"></div>
-      <div class="container hero-grid">
-        <div class="hero-copy">
-          <p class="eyebrow">Ensino • Disciplina • Excelência</p>
-          <h1 id="hero-title">Informação acadêmica clara, segura e sempre ao alcance.</h1>
-          <!-- EDITE: substitua o parágrafo abaixo pela mensagem oficial do comando. -->
-          <p class="hero-text">Consulte as datas das avaliações e acompanhe seu desempenho no CFS — 1º Pelotão em um ambiente organizado e de acesso simples.</p>
-          <div class="hero-actions">
-            <a class="button button-gold" href="#notas">Consultar minhas notas</a>
-            <a class="button button-outline" href="#calendario">Ver calendário</a>
-          </div>
-        </div>
-        <aside class="status-card" aria-label="Informações do período letivo">
-          <span class="status-dot">Sistema disponível</span>
-          <p>Período letivo</p>
-          <!-- EDITE: atualize o período letivo. -->
-          <strong>2026 • Turma CFS</strong>
-          <div class="status-line"></div>
-          <small>Dados atualizados pelo administrador do 1º Pelotão.</small>
-        </aside>
-      </div>
-      <img class="hero-crest" src="assets/escudo-efas.png" alt="" aria-hidden="true">
-    </section>
+## Regra principal para preservar os dados
 
-    <section class="quick-info" aria-label="Atalhos e avisos">
-      <div class="container info-grid">
-        <article><span class="info-number">01</span><div><h2>Consulta individual</h2><p>Suas notas são exibidas somente após identificação.</p></div></article>
-        <article><span class="info-number">02</span><div><h2>Agenda centralizada</h2><p>Datas, horários e locais reunidos em um só lugar.</p></div></article>
-        <article><span class="info-number">03</span><div><h2>Canal institucional</h2><p>Informações publicadas exclusivamente pela administração.</p></div></article>
-      </div>
-    </section>
+Atualize o serviço Render existente `controle-notas-1-pelotao`. Não crie outro serviço e não remova o disco persistente `dados-notas`.
 
-    <section class="section" id="calendario" aria-labelledby="calendar-title">
-      <div class="container">
-        <div class="section-heading">
-          <div><p class="eyebrow dark">Planejamento acadêmico</p><h2 id="calendar-title">Calendário de provas</h2></div>
-          <label class="filter-label">Filtrar por disciplina
-            <select id="discipline-filter"><option value="todas">Todas as disciplinas</option></select>
-          </label>
-        </div>
-        <!-- EDITE: as provas são cadastradas no array exams, no arquivo script.js. -->
-        <div id="exam-list" class="exam-list" aria-live="polite"></div>
-        <p class="section-note"><strong>Calendário oficial atualizado em 20/07/2026.</strong> Educação Física Militar: 1º TAF nos tempos 39 a 42, 2º TAF nos tempos 57 a 60 e 3º TAF nos tempos 75 a 78; as datas serão informadas pela coordenação de cada turma. As demais datas podem sofrer alterações.</p>
-      </div>
-    </section>
+O banco existente permanece no caminho:
 
-    <section class="section grade-section" id="notas" aria-labelledby="grades-title">
-      <div class="container grade-grid">
-        <div class="grade-intro">
-          <p class="eyebrow">Acesso do discente</p>
-          <h2 id="grades-title">Notas finais</h2>
-          <p>Informe sua matrícula e seu código individual para visualizar apenas o seu boletim.</p>
-          <ul class="check-list">
-            <li>Consulta privada e individual</li>
-            <li>Resultado por disciplina</li>
-            <li>Média geral calculada automaticamente</li>
-          </ul>
-        </div>
-        <div class="form-card">
-          <form id="grade-form" novalidate>
-            <label for="student-id">Matrícula</label>
-            <input id="student-id" name="student-id" inputmode="numeric" autocomplete="username" placeholder="Ex.: 2026001" required>
-            <label for="access-code">Código de acesso</label>
-            <div class="password-wrap">
-              <input id="access-code" name="access-code" type="password" autocomplete="current-password" placeholder="Informe seu código" required>
-              <button id="toggle-password" type="button" aria-label="Mostrar código de acesso">Mostrar</button>
-            </div>
-            <p id="form-message" class="form-message" role="alert"></p>
-            <button class="button button-gold full" type="submit">Acessar boletim</button>
-            <p class="demo-tip">Utilize a matrícula e o código individual fornecidos pela administração.</p>
-          </form>
-        </div>
-      </div>
-      <div class="container"><div id="report-card" class="report-card" hidden aria-live="polite"></div><section id="student-password-panel" class="student-password-panel" hidden aria-labelledby="student-password-title"><div class="password-panel-head"><div class="security-mark" aria-hidden="true">✓</div><div><span class="security-label">Área segura</span><h3 id="student-password-title">Alterar senha de acesso</h3><p>No primeiro acesso, substitua a senha temporária. A nova senha deve possuir pelo menos 8 caracteres.</p></div></div><form id="student-password-form"><div class="password-change-grid"><label for="student-new-password">Nova senha<input id="student-new-password" name="password" type="password" minlength="8" autocomplete="new-password" required><small>Mínimo de 8 caracteres</small></label><label for="student-confirm-password">Confirmar nova senha<input id="student-confirm-password" name="confirmation" type="password" minlength="8" autocomplete="new-password" aria-describedby="password-match-indicator" required><small>Digite novamente a mesma senha</small></label></div><p id="password-match-indicator" class="password-match" data-state="empty" role="status" aria-live="polite"><span aria-hidden="true">•</span> Aguardando a confirmação da senha.</p><label class="show-passwords"><input id="show-student-passwords" type="checkbox"> Mostrar as senhas digitadas</label><div class="password-panel-actions"><button id="student-password-submit" class="button button-gold" type="submit" disabled>Salvar nova senha</button><span class="security-note">Sua senha não é exibida para outros usuários.</span></div><p class="form-message" role="status" aria-live="polite"></p></form></section></div>
-    </section>
+`/opt/render/project/src/data/notas.db`
 
-    <section class="section admin-section" id="administracao" aria-labelledby="admin-title">
-      <div class="container admin-card">
-        <div>
-          <p class="eyebrow dark">Área restrita</p>
-          <h2 id="admin-title">Administração</h2>
-          <p>O cadastro e a atualização de dados devem ser realizados em um painel protegido, conectado ao banco de dados institucional.</p>
-        </div>
-        <a class="button button-dark" href="admin.html">Acesso do administrador</a>
-      </div>
-    </section>
-  </main>
+## Etapa 1 - atualizar o repositório
 
-  <footer class="site-footer">
-    <div class="container footer-grid">
-      <div class="brand footer-brand"><img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58"><span><strong>CFS • 1º Pelotão</strong><small>Controle de Notas</small></span></div>
-      <!-- EDITE: insira abaixo os contatos institucionais oficiais. -->
-      <div><strong>Contato institucional</strong><p>Secretaria do 1º Pelotão<br><a href="mailto:contato@instituicao.mil.br">contato@instituicao.mil.br</a></p></div>
-      <div><strong>Acesso rápido</strong><p><a href="#calendario">Calendário</a><br><a href="#notas">Notas finais</a></p></div>
-    </div>
-    <div class="container copyright">© <span id="current-year"></span> CFS — 1º Pelotão. Uso institucional.</div>
-  </footer>
-  <script src="script.js" defer></script>
-</body>
-</html>
+1. Abra o repositório GitHub que já está conectado ao serviço Render.
+2. Substitua os arquivos da aplicação pelo conteúdo desta pasta.
+3. Mantenha a pasta `data` sem arquivo `notas.db`.
+4. Não envie senhas, arquivos `.env` ou bancos `.db`.
+5. Confirme as alterações no GitHub.
+
+## Etapa 2 - conferir o serviço existente
+
+No painel do Render, abra o serviço `controle-notas-1-pelotao` e confirme:
+
+- Runtime: Python.
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `python server.py`
+- Health Check Path: `/`
+- Variável `EFAS_HOST`: `0.0.0.0`
+- Variável `EFAS_PORT`: `10000`
+- Variável `EFAS_ADMIN_USER`: `administrador`
+- Variável `EFAS_COOKIE_SECURE`: `1`
+- Disco persistente `dados-notas` montado em `/opt/render/project/src/data`
+
+Não altere `EFAS_INITIAL_ADMIN_PASSWORD` se o administrador já foi cadastrado. Essa variável é usada somente quando o banco ainda não possui administrador.
+
+## Etapa 3 - publicar
+
+1. No serviço existente, clique em **Manual Deploy**.
+2. Escolha **Deploy latest commit**.
+3. Aguarde a mensagem **Deploy live**.
+4. Acesse `https://controle-notas-1-pelotao.onrender.com/`.
+5. Atualize o navegador com `Ctrl + F5`.
+6. Entre no painel e confira um discente, uma nota já lançada e o calendário.
+
+## O que não fazer
+
+- Não criar outro serviço Render.
+- Não excluir ou recriar o disco persistente.
+- Não alterar o ponto de montagem do disco.
+- Não enviar `data/notas.db` ao GitHub.
+- Não publicar esta aplicação no Netlify.
+- Não clicar em **Clear build cache & deploy** durante a primeira tentativa.
+
+## Verificação dos dados
+
+Depois da publicação, os nomes, senhas, notas e calendário devem continuar disponíveis porque o disco persistente não é substituído pelo código. Se algum dado não aparecer, interrompa as alterações e confirme se o disco continua montado no caminho indicado acima.

@@ -1,100 +1,134 @@
-const $=selector=>document.querySelector(selector),esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=value=>Number(value).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});let cache={subjects:[],students:[],scores:[]},scoreMode='subject',pdfImportStudentId='';
-async function api(path,options={}){const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}),data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Não foi possível concluir a operação.');return data}
-function dashboard(user){$('#login-panel').hidden=true;$('#dashboard').hidden=false;$('#initial-warning').hidden=!user.must_change_password;loadData()}
-async function check(){try{dashboard(await api('/api/admin/session'))}catch{$('#login-panel').hidden=false;$('#dashboard').hidden=true}}
-$('#admin-login-form').addEventListener('submit',async e=>{e.preventDefault();try{dashboard(await api('/api/admin/login',{method:'POST',body:JSON.stringify({username:$('#admin-user').value.trim(),password:$('#admin-password').value})}))}catch(error){$('#login-message').textContent=error.message}});
-function bindForm(selector,path,success,preserve=[]){$(selector).addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,message=form.querySelector('.panel-message'),names=typeof preserve==='function'?preserve():preserve,kept=Object.fromEntries(names.map(name=>[name,form.elements[name]?.value||'']));try{await api(path,{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form)))});message.textContent=success;form.reset();await loadData();for(const[name,value]of Object.entries(kept))if(form.elements[name])form.elements[name].value=value;if(selector==='#score-form'){updateRule();updateObservation();$(scoreMode==='student'?'#score-subject':'#score-student').focus()}}catch(error){message.textContent=error.message}})}
-bindForm('#student-form','/api/admin/student','Discente salvo com sucesso.');bindForm('#score-form','/api/admin/score','Notas salvas com sucesso.',()=>scoreMode==='student'?['student_id']:['subject_id']);bindForm('#exam-form','/api/admin/exams','Data cadastrada no calendário.');
-$('#password-form').addEventListener('submit',async e=>{e.preventDefault();const message=e.currentTarget.querySelector('.panel-message');try{await api('/api/admin/password',{method:'POST',body:JSON.stringify({password:$('#new-password').value})});message.textContent='Senha alterada.';$('#initial-warning').hidden=true;e.currentTarget.reset()}catch(error){message.textContent=error.message}});
-function updateRule(){const subject=cache.subjects.find(x=>String(x.id)===$('#score-subject').value);if(!subject)return;const apt=subject.grading_mode==='apt',taf=subject.grading_mode==='taf',two=subject.exam_count===2;const exam1=$('#score-form [name=exam1]'),exam2=$('#score-form [name=exam2]'),work=$('#score-form [name=work]'),status=$('#score-form [name=status]');$('#status-label').hidden=!apt;$('.score-fields').hidden=apt;status.disabled=!apt;if(!apt)status.value='';if(apt){for(const input of [exam1,exam2,work]){input.value='';input.disabled=true}$('#score-rule').textContent='Resultado qualitativo: selecione Apto ou Inapto. Esta disciplina não integra a pontuação do ranking.';return}exam1.disabled=!taf&&!two;exam2.disabled=false;work.disabled=false;if(exam1.disabled)exam1.value='';$('#exam1-label .field-name').textContent=taf?'1º TAF':'Avaliação Complementar (AVC)';$('#exam2-label .field-name').textContent=taf?'2º TAF':'Avaliação Final (AVF)';$('#work-label .field-name').textContent=taf?'3º TAF':'Trabalho';$('#exam1-max').textContent='(máx. 3)';$('#exam2-max').textContent=`(máx. ${taf?3:two?4:7})`;$('#work-max').textContent=`(máx. ${taf?4:3})`;exam1.max=3;exam2.max=taf?3:two?4:7;work.max=taf?4:3;$('#exam1-label').hidden=!taf&&!two;$('#exam2-label').hidden=false;$('#score-rule').textContent=taf?'Educação Física: 1º TAF 3 pontos • 2º TAF 3 pontos • 3º TAF 4 pontos':two?'AVC: 3 pontos • AVF: 4 pontos • Trabalho: 3 pontos':'AVF: 7 pontos • Trabalho: 3 pontos'}
-function updateCalendarTypes(){const subject=cache.subjects.find(x=>x.name===$('#calendar-subject').value);if(!subject)return;const types=subject.grading_mode==='apt'?['Resultado Apto/Inapto']:subject.grading_mode==='taf'?['1º TAF','2º TAF','3º TAF']:subject.exam_count===1?['Avaliação Final (AVF)','Trabalho']:['Avaliação Complementar (AVC)','Avaliação Final (AVF)','Trabalho'];$('#calendar-type').innerHTML=types.map(x=>`<option>${esc(x)}</option>`).join('')}
-function updateObservation(){const student=cache.students.find(x=>x.id===$('#score-student').value);$('#score-observation').value=student?.observation||''}
-function updateScoreValues(){const studentId=$('#score-student').value,subjectId=$('#score-subject').value,score=cache.scores.find(x=>String(x.student_id)===studentId&&String(x.subject_id)===subjectId),form=$('#score-form');for(const field of ['exam1','exam2','work','status']){const input=form.elements[field];if(input&&!input.disabled)input.value=score?.[field]??''}}
-function openStudentDetails(studentId){const student=cache.students.find(x=>String(x.id)===String(studentId)),ranking=cache.ranking.find(x=>String(x.id)===String(studentId));if(!student)return;const scores=cache.scores.filter(x=>String(x.student_id)===String(studentId)).sort((a,b)=>a.subject.localeCompare(b.subject,'pt-BR')),content=$('#student-details-content');$('#student-details-title').textContent=student.name;content.innerHTML=`<div class="student-details-summary"><p><strong>${esc(student.rank)}</strong><span>Matrícula ${esc(student.id)}</span></p>${ranking?`<div><span>Colocação</span><strong>${ranking.position}º</strong></div><div><span>Pontos</span><strong>${fmt(ranking.points)} / ${fmt(ranking.distributed)}</strong></div><div><span>Média</span><strong>${fmt(ranking.average)}</strong></div>`:''}</div>${scores.length?`<div class="table-wrap"><table class="grade-table student-details-table"><thead><tr><th>Disciplina</th><th>AVC / 1º TAF</th><th>AVF / 2º TAF</th><th>Trabalho / 3º TAF</th><th>Total ou resultado</th></tr></thead><tbody>${scores.map(score=>{const apt=score.grading_mode==='apt',total=(score.exam1||0)+(score.exam2||0)+(score.work||0);return`<tr><td><strong>${esc(score.subject)}</strong></td><td>${apt||score.exam1==null?'—':fmt(score.exam1)}</td><td>${apt||score.exam2==null?'—':fmt(score.exam2)}</td><td>${apt||score.work==null?'—':fmt(score.work)}</td><td><strong>${apt?esc(score.status||'Não lançado'):fmt(total)}</strong></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty-student-scores"><strong>Nenhuma nota lançada</strong><p>Este discente ainda não possui matérias com pontos ou resultados cadastrados.</p></div>'}${student.observation?`<div class="student-observation"><strong>Observação</strong><p>${esc(student.observation)}</p></div>`:''}`;const dialog=$('#student-details-dialog');if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')}
-function closeStudentDetails(){const dialog=$('#student-details-dialog');if(typeof dialog.close==='function')dialog.close();else dialog.removeAttribute('open')}
-function setScoreMode(mode){scoreMode=mode;document.querySelectorAll('.score-mode-button').forEach(button=>{const active=button.dataset.scoreMode===mode;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))});const collective=mode==='collective';$('#score-form').hidden=collective;$('#collective-score-form').hidden=!collective;if(mode==='student'){$('#individual-score-title').textContent='Lançamento por discente';$('#individual-score-help').textContent='O discente permanecerá selecionado após salvar; escolha a próxima matéria.';$('#score-student').focus()}else if(mode==='subject'){$('#individual-score-title').textContent='Lançamento individual por matéria';$('#individual-score-help').textContent='A matéria permanecerá selecionada após salvar; escolha o próximo discente.';$('#score-subject').focus()}else{$('#collective-subject').focus();renderCollectiveScores()}}
-function collectiveFields(subject){if(subject.grading_mode==='apt')return[{key:'status',label:'Resultado',type:'status'}];if(subject.grading_mode==='taf')return[{key:'exam1',label:'1º TAF',max:3},{key:'exam2',label:'2º TAF',max:3},{key:'work',label:'3º TAF',max:4}];if(subject.exam_count===1)return[{key:'exam2',label:'Avaliação Final (AVF)',max:7},{key:'work',label:'Trabalho',max:3}];return[{key:'exam1',label:'Avaliação Complementar (AVC)',max:3},{key:'exam2',label:'Avaliação Final (AVF)',max:4},{key:'work',label:'Trabalho',max:3}]}
-function renderCollectiveScores(){const select=$('#collective-subject'),current=select.value;if(select.options.length<=1)select.innerHTML='<option value="">Selecione</option>'+cache.subjects.map(x=>`<option value="${x.id}">${esc(x.name)} — ${x.hours} h/a</option>`).join('');if(current)select.value=current;const subject=cache.subjects.find(x=>String(x.id)===select.value),container=$('#collective-score-table'),button=$('#collective-save-button');if(!subject){container.innerHTML='';button.disabled=true;$('#collective-rule').textContent='Selecione uma disciplina para montar a tabela.';return}const fields=collectiveFields(subject);$('#collective-rule').textContent=subject.grading_mode==='apt'?'Resultado qualitativo Apto/Inapto.':fields.map(x=>`${x.label}: ${x.max} pontos`).join(' • ');container.innerHTML=cache.students.length?`<div class="table-wrap"><table class="grade-table collective-table"><thead><tr><th>Discente</th>${fields.map(field=>`<th>${esc(field.label)}${field.max?`<small class="table-sub">Máx. ${field.max}</small>`:''}</th>`).join('')}</tr></thead><tbody>${cache.students.map(student=>{const score=cache.scores.find(x=>String(x.subject_id)===String(subject.id)&&String(x.student_id)===String(student.id))||{};return`<tr data-student-id="${esc(student.id)}"><td><strong>${esc(student.name)}</strong><small class="table-sub">${esc(student.id)} • ${esc(student.rank)}</small></td>${fields.map(field=>`<td>${field.type==='status'?`<select data-field="status"><option value="">Não lançado</option><option${score.status==='Apto'?' selected':''}>Apto</option><option${score.status==='Inapto'?' selected':''}>Inapto</option></select>`:`<input data-field="${field.key}" type="number" min="0" max="${field.max}" step="0.01" inputmode="decimal" value="${score[field.key]??''}" aria-label="${esc(field.label)} de ${esc(student.name)}">`}</td>`).join('')}</tr>`}).join('')}</tbody></table></div>`:'<p>Nenhum discente cadastrado.</p>';button.disabled=!cache.students.length}
-document.querySelectorAll('.score-mode-button').forEach(button=>button.addEventListener('click',()=>setScoreMode(button.dataset.scoreMode)));
-$('#score-subject').addEventListener('change',()=>{updateRule();updateScoreValues()});$('#score-student').addEventListener('change',()=>{updateObservation();updateScoreValues()});$('#calendar-subject').addEventListener('change',updateCalendarTypes);$('#collective-subject').addEventListener('change',renderCollectiveScores);
-async function loadData(){const data=await api('/api/admin/data');cache=data;$('#score-student').innerHTML='<option value="">Selecione</option>'+data.students.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} — ${esc(x.id)}</option>`).join('');const options=data.subjects.map(x=>`<option value="${x.id}">${esc(x.name)} — ${x.hours} h/a</option>`).join('');$('#score-subject').innerHTML='<option value="">Selecione</option>'+options;$('#calendar-subject').innerHTML=data.subjects.map(x=>`<option value="${esc(x.name)}">${esc(x.name)} — ${x.hours} h/a</option>`).join('');updateCalendarTypes();
-$('#ranking-data').innerHTML=data.ranking.length?`<div class="table-wrap"><table class="grade-table"><thead><tr><th>Posição</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th><th>Observação</th></tr></thead><tbody>${data.ranking.map(x=>`<tr><td><strong>${x.position}º</strong></td><td><button class="student-name-button" type="button" data-student-details="${esc(x.id)}" aria-label="Ver notas lançadas de ${esc(x.name)}">${esc(x.name)}</button><small class="table-sub">${esc(x.id)} • Clique no nome para consultar</small></td><td>${fmt(x.points)}</td><td>${fmt(x.distributed)}</td><td>${fmt(x.average)}</td><td>${esc(x.observation)||'—'}</td></tr>`).join('')}</tbody></table></div>`:'<p>Nenhum discente cadastrado.</p>';
-$('#scores-data').innerHTML=data.scores.length?`<div class="table-wrap"><table class="grade-table"><thead><tr><th>Discente</th><th>Disciplina</th><th>Avaliação Complementar (AVC)</th><th>Avaliação Final (AVF)</th><th>Trabalho / 3º TAF</th><th>Total ou resultado</th></tr></thead><tbody>${data.scores.map(x=>`<tr><td>${esc(x.student_id)}</td><td>${esc(x.subject)}</td><td>${x.grading_mode==='apt'?'—':x.exam1==null?'—':fmt(x.exam1)}</td><td>${x.grading_mode==='apt'?'—':x.exam2==null?'—':fmt(x.exam2)}</td><td>${x.grading_mode==='apt'?'—':x.work==null?'—':fmt(x.work)}</td><td><strong>${x.grading_mode==='apt'?esc(x.status||'—'):fmt((x.exam1||0)+(x.exam2||0)+(x.work||0))}</strong></td></tr>`).join('')}</tbody></table></div>`:'<p>Nenhum resultado lançado.</p>'}
-$('#refresh-button').addEventListener('click',loadData);$('#logout-button').addEventListener('click',async()=>{await api('/api/admin/logout',{method:'POST',body:'{}'});location.reload()});check();
-document.addEventListener('click',event=>{const button=event.target.closest('[data-student-details]');if(button)openStudentDetails(button.dataset.studentDetails)});$('#student-details-close').addEventListener('click',closeStudentDetails);$('#student-details-close-bottom').addEventListener('click',closeStudentDetails);$('#student-details-dialog').addEventListener('click',event=>{if(event.target===$('#student-details-dialog'))closeStudentDetails()});
-$('#pdf-report-button').addEventListener('click',async e=>{const button=e.currentTarget,message=$('#pdf-report-message');button.disabled=true;message.textContent='Gerando relatório...';try{const response=await fetch('/api/admin/report.pdf');if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||'Não foi possível gerar o relatório.')}const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`relatorio-notas-${new Date().toISOString().slice(0,10)}.pdf`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);message.textContent='Relatório gerado com sucesso.'}catch(error){message.textContent=error.message}finally{button.disabled=false}});
-$('#calendar-import-form').addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,file=$('#calendar-pdf').files[0],button=form.querySelector('button'),message=form.querySelector('.panel-message');if(!file)return;if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';return}button.disabled=true;message.textContent='Lendo e validando o calendário...';try{const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)}),result=await api('/api/admin/calendar/import',{method:'POST',body:JSON.stringify({filename:file.name,pdf_base64})});message.textContent=`Calendário atualizado: ${result.imported} avaliações importadas.`;form.reset();await loadData()}catch(error){message.textContent=error.message}finally{button.disabled=false}});
-$('#collective-score-form').addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=$('#collective-save-button'),message=form.querySelector('.panel-message'),subject_id=$('#collective-subject').value,entries=[...$('#collective-score-table').querySelectorAll('tbody tr')].map(row=>{const entry={student_id:row.dataset.studentId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry}).filter(entry=>Object.entries(entry).some(([key,value])=>key!=='student_id'&&value!==''));if(!entries.length){message.textContent='Preencha pelo menos um resultado antes de salvar.';return}button.disabled=true;message.textContent='Salvando lançamentos coletivos...';try{const result=await api('/api/admin/scores/bulk',{method:'POST',body:JSON.stringify({subject_id,entries})});message.textContent=`${result.saved} resultados salvos com sucesso.`;await loadData();renderCollectiveScores()}catch(error){message.textContent=error.message}finally{button.disabled=false}});
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Portal institucional para consulta de calendário de provas e notas finais do CFS — 1º Pelotão.">
+  <meta name="theme-color" content="#1d1c18">
+  <title>Controle de Notas | CFS — 1º Pelotão</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
 
-// Mantém a lista de discentes da importação sincronizada com o cadastro principal.
-new MutationObserver(()=>{const select=$('#pdf-score-student'),current=pdfImportStudentId||select.value;select.innerHTML=$('#score-student').innerHTML;select.value=current}).observe($('#score-student'),{childList:true});
-function renderPdfScorePreview(entries){const container=$('#student-pdf-preview-table'),confirmButton=$('#student-pdf-confirm');confirmButton.disabled=false;confirmButton.textContent='Confirmar e salvar notas';$('#student-pdf-confirm-message').textContent='';container.innerHTML=`<div class="table-wrap"><table class="grade-table pdf-score-preview-table"><thead><tr><th>Importar</th><th>Disciplina</th><th>AVC / 1º TAF</th><th>AVF / 2º TAF</th><th>Trabalho / 3º TAF</th><th>Resultado</th></tr></thead><tbody>${entries.map(entry=>{const subject=cache.subjects.find(item=>String(item.id)===String(entry.subject_id)),apt=subject?.grading_mode==='apt',taf=subject?.grading_mode==='taf',single=subject?.exam_count===1&&subject?.grading_mode==='normal';const scoreInput=(field,value,max,disabled=false)=>disabled?'—':`<input data-field="${field}" type="number" min="0" max="${max}" step="0.01" inputmode="decimal" value="${value??''}" aria-label="${field} de ${esc(entry.subject)}">`;return`<tr data-subject-id="${entry.subject_id}"><td><input class="pdf-import-check" type="checkbox" checked aria-label="Importar ${esc(entry.subject)}"></td><td><strong>${esc(entry.subject)}</strong><small class="table-sub">Confira os valores antes de salvar</small></td><td>${apt?'—':scoreInput('exam1',entry.exam1,3,single)}</td><td>${apt?'—':scoreInput('exam2',entry.exam2,taf?3:single?7:4)}</td><td>${apt?'—':scoreInput('work',entry.work,taf?4:3)}</td><td>${apt?`<select data-field="status" aria-label="Resultado de ${esc(entry.subject)}"><option value="">Selecione</option><option${entry.status==='Apto'?' selected':''}>Apto</option><option${entry.status==='Inapto'?' selected':''}>Inapto</option></select>`:'Pontuação'}</td></tr>`}).join('')}</tbody></table></div>`;$('#student-pdf-preview').hidden=false}
-async function analyzePdfImport(event){
-  event.preventDefault();
-  const form=$('#student-pdf-score-form'),file=$('#student-score-pdf').files[0],student_id=$('#pdf-score-student').value;
-  const button=$('#student-pdf-analyze-button'),message=form.querySelector('.panel-message');
-  if(!student_id){message.textContent='Selecione o discente antes de importar o PDF.';$('#pdf-score-student').focus();return}
-  if(!file){message.textContent='Selecione o arquivo PDF de notas.';$('#student-score-pdf').focus();return}
-  if(file.type&&file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf')){message.textContent='O arquivo selecionado precisa estar no formato PDF.';return}
-  if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';return}
-  $('#student-pdf-preview').hidden=true;$('#student-pdf-confirm-message').textContent='';
-  button.disabled=true;button.textContent='Lendo o PDF...';message.textContent='Lendo as disciplinas e notas do PDF. Elas serão vinculadas ao discente selecionado. Aguarde...';
-  try{
-    const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)});
-    const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'preview',student_id,pdf_base64})});
-    pdfImportStudentId=student_id;renderPdfScorePreview(result.entries);
-    message.textContent=`${result.entries.length} disciplina(s) reconhecida(s) para ${result.student.name} (matrícula ${student_id}). Confira a prévia antes de confirmar.`;
-    $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'start'});
-  }catch(error){
-    message.textContent=error.message||'Não foi possível importar o PDF.';$('#student-pdf-preview').hidden=true;
-  }finally{
-    button.disabled=false;button.textContent='Ler PDF e conferir notas';
-  }
-}
-$('#student-pdf-score-form').addEventListener('submit',analyzePdfImport);
-$('#student-pdf-analyze-button').addEventListener('click',analyzePdfImport);
-$('#pdf-score-student').addEventListener('change',()=>{pdfImportStudentId='';$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML=''});
-$('#student-score-pdf').addEventListener('change',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML=''});
-$('#student-pdf-cancel').addEventListener('click',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML='';$('#student-pdf-confirm-message').textContent=''});
-async function confirmPdfImport(event){
-  event.preventDefault();
-  event.stopPropagation();
-  const button=$('#student-pdf-confirm'),message=$('#student-pdf-confirm-message'),formMessage=$('#student-pdf-score-form .panel-message');
-  if(button.dataset.saving==='true')return;
-  const student_id=pdfImportStudentId||$('#pdf-score-student').value;
-  const entries=[...$('#student-pdf-preview-table tbody tr')]
-    .filter(row=>row.querySelector('.pdf-import-check').checked)
-    .map(row=>{const entry={subject_id:row.dataset.subjectId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry});
-  if(!student_id){message.textContent='Selecione novamente o discente antes de salvar.';return}
-  if(!entries.length){message.textContent='Selecione pelo menos uma matéria para importar.';return}
-  button.dataset.saving='true';button.disabled=true;button.textContent='Salvando...';message.textContent='Enviando e conferindo as notas no banco de dados...';
-  try{
-    const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'apply',student_id,entries})});
-    if(!result.ok||!Number(result.saved))throw new Error('O servidor não confirmou a gravação das notas.');
-    const verification=await api('/api/admin/data');
-    const matches=entries.every(entry=>{
-      const saved=verification.scores.find(score=>String(score.student_id)===String(student_id)&&String(score.subject_id)===String(entry.subject_id));
-      if(!saved)return false;
-      return ['exam1','exam2','work','status'].every(field=>{
-        if(!(field in entry)||entry[field]==='')return true;
-        if(field==='status')return String(saved[field]||'')===String(entry[field]);
-        return Math.abs(Number(saved[field])-Number(String(entry[field]).replace(',','.')))<0.0001;
-      });
-    });
-    if(!matches)throw new Error('A API respondeu, mas a conferência encontrou uma nota diferente no banco de dados.');
-    const success=`${result.saved} disciplina(s) salva(s) e conferida(s) no banco de dados.`;
-    message.textContent=success;formMessage.textContent=`Notas salvas para o discente selecionado. ${success}`;
-    button.textContent='Importação concluída';pdfImportStudentId=student_id;
-    $('#student-score-pdf').value='';
-    try{await loadData();$('#pdf-score-student').value=student_id}
-    catch{formMessage.textContent=`${success} A tela não conseguiu atualizar automaticamente; clique em Atualizar para conferir.`}
-    $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'center'});
-  }catch(error){
-    const detail=error.message==='Rota inexistente.'?'O servidor ainda não possui a atualização da importação por PDF. Atualize também o backend no Render.':error.message;
-    message.textContent=detail;formMessage.textContent=detail;button.textContent='Tentar salvar novamente';
-  }finally{
-    button.dataset.saving='false';button.disabled=false;
-  }
-}
-// Delegação mantém o clique ativo mesmo se a prévia for reconstruída.
-document.addEventListener('click',event=>{if(event.target.closest('#student-pdf-confirm'))confirmPdfImport(event)});
+  <header class="site-header" id="topo">
+    <div class="topbar">Portal acadêmico oficial • CFS / 1º Pelotão</div>
+    <div class="nav-wrap container">
+      <a class="brand" href="#inicio" aria-label="Página inicial do CFS, 1º Pelotão">
+        <img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58">
+        <span><strong>Controle de Notas</strong><small>CFS • 1º Pelotão</small></span>
+      </a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="menu-principal" aria-label="Abrir menu">
+        <span></span><span></span><span></span>
+      </button>
+      <nav id="menu-principal" class="main-nav" aria-label="Navegação principal">
+        <a href="#inicio" class="active">Início</a>
+        <a href="#calendario">Calendário de provas</a>
+        <a href="#notas">Notas finais</a>
+        <a href="#administracao" class="nav-admin">Administração</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="conteudo">
+    <section class="hero" id="inicio" aria-labelledby="hero-title">
+      <div class="hero-pattern" aria-hidden="true"></div>
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Ensino • Disciplina • Excelência</p>
+          <h1 id="hero-title">Informação acadêmica clara, segura e sempre ao alcance.</h1>
+          <!-- EDITE: substitua o parágrafo abaixo pela mensagem oficial do comando. -->
+          <p class="hero-text">Consulte as datas das avaliações e acompanhe seu desempenho no CFS — 1º Pelotão em um ambiente organizado e de acesso simples.</p>
+          <div class="hero-actions">
+            <a class="button button-gold" href="#notas">Consultar minhas notas</a>
+            <a class="button button-outline" href="#calendario">Ver calendário</a>
+          </div>
+        </div>
+        <aside class="status-card" aria-label="Informações do período letivo">
+          <span class="status-dot">Sistema disponível</span>
+          <p>Período letivo</p>
+          <!-- EDITE: atualize o período letivo. -->
+          <strong>2026 • Turma CFS</strong>
+          <div class="status-line"></div>
+          <small>Dados atualizados pelo administrador do 1º Pelotão.</small>
+        </aside>
+      </div>
+      <img class="hero-crest" src="assets/escudo-efas.png" alt="" aria-hidden="true">
+    </section>
+
+    <section class="quick-info" aria-label="Atalhos e avisos">
+      <div class="container info-grid">
+        <article><span class="info-number">01</span><div><h2>Consulta individual</h2><p>Suas notas são exibidas somente após identificação.</p></div></article>
+        <article><span class="info-number">02</span><div><h2>Agenda centralizada</h2><p>Datas, horários e locais reunidos em um só lugar.</p></div></article>
+        <article><span class="info-number">03</span><div><h2>Canal institucional</h2><p>Informações publicadas exclusivamente pela administração.</p></div></article>
+      </div>
+    </section>
+
+    <section class="section" id="calendario" aria-labelledby="calendar-title">
+      <div class="container">
+        <div class="section-heading">
+          <div><p class="eyebrow dark">Planejamento acadêmico</p><h2 id="calendar-title">Calendário de provas</h2></div>
+          <label class="filter-label">Filtrar por disciplina
+            <select id="discipline-filter"><option value="todas">Todas as disciplinas</option></select>
+          </label>
+        </div>
+        <!-- EDITE: as provas são cadastradas no array exams, no arquivo script.js. -->
+        <div id="exam-list" class="exam-list" aria-live="polite"></div>
+        <p class="section-note"><strong>Calendário oficial atualizado em 20/07/2026.</strong> Educação Física Militar: 1º TAF nos tempos 39 a 42, 2º TAF nos tempos 57 a 60 e 3º TAF nos tempos 75 a 78; as datas serão informadas pela coordenação de cada turma. As demais datas podem sofrer alterações.</p>
+      </div>
+    </section>
+
+    <section class="section grade-section" id="notas" aria-labelledby="grades-title">
+      <div class="container grade-grid">
+        <div class="grade-intro">
+          <p class="eyebrow">Acesso do discente</p>
+          <h2 id="grades-title">Notas finais</h2>
+          <p>Informe sua matrícula e seu código individual para visualizar apenas o seu boletim.</p>
+          <ul class="check-list">
+            <li>Consulta privada e individual</li>
+            <li>Resultado por disciplina</li>
+            <li>Média geral calculada automaticamente</li>
+          </ul>
+        </div>
+        <div class="form-card">
+          <form id="grade-form" novalidate>
+            <label for="student-id">Matrícula</label>
+            <input id="student-id" name="student-id" inputmode="numeric" autocomplete="username" placeholder="Ex.: 2026001" required>
+            <label for="access-code">Código de acesso</label>
+            <div class="password-wrap">
+              <input id="access-code" name="access-code" type="password" autocomplete="current-password" placeholder="Informe seu código" required>
+              <button id="toggle-password" type="button" aria-label="Mostrar código de acesso">Mostrar</button>
+            </div>
+            <p id="form-message" class="form-message" role="alert"></p>
+            <button class="button button-gold full" type="submit">Acessar boletim</button>
+            <p class="demo-tip">Utilize a matrícula e o código individual fornecidos pela administração.</p>
+          </form>
+        </div>
+      </div>
+      <div class="container"><div id="report-card" class="report-card" hidden aria-live="polite"></div><section id="student-password-panel" class="student-password-panel" hidden aria-labelledby="student-password-title"><div class="password-panel-head"><div class="security-mark" aria-hidden="true">✓</div><div><span class="security-label">Área segura</span><h3 id="student-password-title">Alterar senha de acesso</h3><p>No primeiro acesso, substitua a senha temporária. A nova senha deve possuir pelo menos 8 caracteres.</p></div></div><form id="student-password-form"><div class="password-change-grid"><label for="student-new-password">Nova senha<input id="student-new-password" name="password" type="password" minlength="8" autocomplete="new-password" required><small>Mínimo de 8 caracteres</small></label><label for="student-confirm-password">Confirmar nova senha<input id="student-confirm-password" name="confirmation" type="password" minlength="8" autocomplete="new-password" aria-describedby="password-match-indicator" required><small>Digite novamente a mesma senha</small></label></div><p id="password-match-indicator" class="password-match" data-state="empty" role="status" aria-live="polite"><span aria-hidden="true">•</span> Aguardando a confirmação da senha.</p><label class="show-passwords"><input id="show-student-passwords" type="checkbox"> Mostrar as senhas digitadas</label><div class="password-panel-actions"><button id="student-password-submit" class="button button-gold" type="submit" disabled>Salvar nova senha</button><span class="security-note">Sua senha não é exibida para outros usuários.</span></div><p class="form-message" role="status" aria-live="polite"></p></form></section></div>
+    </section>
+
+    <section class="section admin-section" id="administracao" aria-labelledby="admin-title">
+      <div class="container admin-card">
+        <div>
+          <p class="eyebrow dark">Área restrita</p>
+          <h2 id="admin-title">Administração</h2>
+          <p>O cadastro e a atualização de dados devem ser realizados em um painel protegido, conectado ao banco de dados institucional.</p>
+        </div>
+        <a class="button button-dark" href="admin.html">Acesso do administrador</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div class="brand footer-brand"><img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58"><span><strong>CFS • 1º Pelotão</strong><small>Controle de Notas</small></span></div>
+      <!-- EDITE: insira abaixo os contatos institucionais oficiais. -->
+      <div><strong>Contato institucional</strong><p>Secretaria do 1º Pelotão<br><a href="mailto:contato@instituicao.mil.br">contato@instituicao.mil.br</a></p></div>
+      <div><strong>Acesso rápido</strong><p><a href="#calendario">Calendário</a><br><a href="#notas">Notas finais</a></p></div>
+    </div>
+    <div class="container copyright">© <span id="current-year"></span> CFS — 1º Pelotão. Uso institucional.</div>
+  </footer>
+  <script src="script.js" defer></script>
+</body>
+</html>

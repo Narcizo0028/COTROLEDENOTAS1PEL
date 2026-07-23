@@ -1,7 +1,11 @@
-Esta pasta deve permanecer sem banco no GitHub.
+# Imagens institucionais
 
-No Render, o disco persistente deve ser montado em:
-/opt/render/project/src/data
+Esta pasta contém o escudo oficial da EFAS usado no site e pode receber outras imagens autorizadas.
 
-O arquivo notas.db existente será fornecido pelo próprio disco.
-Nunca substitua esse arquivo por um banco vazio durante a publicação.
+Sugestões:
+
+- `logo-oficial.webp` — logotipo com fundo transparente;
+- `fachada.webp` — imagem institucional otimizada;
+- `brasao.webp` — brasão oficial, se autorizado.
+
+Prefira WebP, comprima os arquivos antes da publicação e sempre inclua um texto alternativo descritivo no HTML. Não utilize imagens sem autorização de uso.
