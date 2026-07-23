@@ -127,7 +127,7 @@ def parse_calendar_pdf(raw):
     if len(events)!=len(set(events)):raise ValueError('O PDF contém avaliações duplicadas.')
     return sorted(events,key=lambda item:(item[0],item[1]))
 
-def parse_student_scores_pdf(raw, subjects):
+def parse_student_scores_pdf(raw, subjects, student_id=None):
     """Lê tabelas ou linhas de um PDF de notas e devolve uma prévia para conferência."""
     import pdfplumber
     if not raw.startswith(b'%PDF'):raise ValueError('O arquivo selecionado não é um PDF válido.')
@@ -146,8 +146,10 @@ def parse_student_scores_pdf(raw, subjects):
     def match_subject(value):
         candidate=norm(value)
         if not candidate:return None
-        exact=[subject for subject in subjects if norm(subject['name']) in candidate or candidate in norm(subject['name'])]
-        if exact:return max(exact,key=lambda item:len(norm(item['name'])))
+        exact=next((subject for subject in subjects if norm(subject['name'])==candidate),None)
+        if exact:return exact
+        contained=[subject for subject in subjects if norm(subject['name']) in candidate]
+        if contained:return max(contained,key=lambda item:len(norm(item['name'])))
         ranked=[(difflib.SequenceMatcher(None,candidate,norm(subject['name'])).ratio(),subject) for subject in subjects]
         ratio,subject=max(ranked,key=lambda item:item[0]);return subject if ratio>=.76 else None
     def field_for(header):
@@ -157,15 +159,24 @@ def parse_student_scores_pdf(raw, subjects):
         if 'trabalho' in value or '3 taf' in value:return 'work'
         if any(word in value for word in ('resultado','situacao','status')):return 'status'
         return None
-    found={}
+    found={};student_id=str(student_id or '').strip();tables_with_student_column=0;matched_student_rows=0
     for _,tables in pages:
         for table in tables:
             if not table:continue
             header_index=next((index for index,row in enumerate(table[:6]) if any('disciplina' in norm(cell) or 'materia' in norm(cell) for cell in (row or []))),None)
             if header_index is None:continue
             headers=table[header_index] or [];mapping={index:field_for(cell) for index,cell in enumerate(headers)}
+            student_column=next((index for index,cell in enumerate(headers) if 'matricula' in norm(cell)),None)
+            subject_column=next((index for index,cell in enumerate(headers) if 'disciplina' in norm(cell) or 'materia' in norm(cell)),None)
+            if student_column is not None:tables_with_student_column+=1
             for row in table[header_index+1:]:
-                cells=[str(cell or '').strip() for cell in (row or [])];subject=match_subject(' '.join(cells))
+                cells=[str(cell or '').strip() for cell in (row or [])]
+                if student_id and student_column is not None:
+                    row_student=re.sub(r'\D','',cells[student_column] if student_column<len(cells) else '')
+                    if row_student!=re.sub(r'\D','',student_id):continue
+                    matched_student_rows+=1
+                subject_source=cells[subject_column] if subject_column is not None and subject_column<len(cells) else ' '.join(cells)
+                subject=match_subject(subject_source)
                 if not subject:continue
                 entry=found.setdefault(subject['id'],{'subject_id':subject['id'],'subject':subject['name'],'exam1':None,'exam2':None,'work':None,'status':None})
                 for index,field in mapping.items():
@@ -174,9 +185,11 @@ def parse_student_scores_pdf(raw, subjects):
                         status=norm(cells[index]);entry[field]='Inapto' if 'inapto' in status else 'Apto' if 'apto' in status else entry[field]
                     else:
                         value=number(cells[index]);entry[field]=value if value is not None else entry[field]
+    if student_id and tables_with_student_column and not matched_student_rows:raise ValueError(f'A matrícula {student_id} não foi encontrada no PDF. Confirme o discente selecionado e o arquivo enviado.')
     if not found:
         for text,_ in pages:
             for line in text.splitlines():
+                if student_id and student_id not in re.sub(r'\s','',line):continue
                 subject=match_subject(line)
                 if not subject:continue
                 entry={'subject_id':subject['id'],'subject':subject['name'],'exam1':None,'exam2':None,'work':None,'status':None};line_norm=norm(line)
@@ -355,7 +368,7 @@ class Handler(SimpleHTTPRequestHandler):
                     if action=='preview':
                         encoded=str(data.get('pdf_base64',''));raw=base64.b64decode(encoded,validate=True)
                         if len(raw)>5*1024*1024:raise ValueError('O PDF deve possuir no máximo 5 MB.')
-                        entries=parse_student_scores_pdf(raw,subjects)
+                        entries=parse_student_scores_pdf(raw,subjects,sid)
                         self.output({'ok':True,'student':dict(student),'entries':entries});return
                     if action!='apply':raise ValueError('Ação de importação inválida.')
                     entries=data.get('entries');subject_map={int(item['id']):item for item in subjects}
