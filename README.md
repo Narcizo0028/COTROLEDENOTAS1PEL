@@ -1,5 +1,7 @@
 # Controle de Notas — CFS / 1º Pelotão
 
+> Publicação limpa: utilize somente o Render e siga primeiro o arquivo `PUBLICAR-NO-RENDER.md`. Para preservar os dados, atualize o serviço existente e mantenha o disco persistente montado em `/opt/render/project/src/data`.
+
 Portal institucional responsivo da EFAS para calendário, consulta individual de notas e administração restrita. A interface usa HTML5, CSS3 e JavaScript puro; o backend usa apenas a biblioteca padrão do Python e SQLite.
 
 ## Estrutura do projeto
