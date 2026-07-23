@@ -85,6 +85,16 @@ location / {
 }
 ```
 
+## Formas de lançamento de notas
+
+No painel do administrador, a seção **Como deseja lançar as notas?** oferece três modos:
+
+- **Por matéria individual:** mantém a disciplina selecionada depois de salvar, facilitando o lançamento para o próximo discente.
+- **Por discente:** mantém o discente selecionado depois de salvar, facilitando o preenchimento das demais disciplinas.
+- **Coletivo por matéria:** exibe todos os discentes em uma tabela e salva os resultados preenchidos de uma só vez.
+
+No boletim, o botão **Sair do boletim** encerra a sessão individual, oculta as notas e remove o código digitado. Recomenda-se sempre utilizá-lo em computadores compartilhados.
+
 ## Checklist antes de publicar
 
 - Revisar nome, e-mail e contatos institucionais em `index.html`.

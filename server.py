@@ -258,6 +258,8 @@ class Handler(SimpleHTTPRequestHandler):
                 if verify(password,current["salt"],current["access_hash"]):self.output({"error":"Escolha uma senha diferente da atual."},400);return
                 salt,digest=password_hash(password);db.execute("UPDATE students SET salt=?,access_hash=?,must_change=0 WHERE id=?",(salt,digest,sid))
             self.output({"ok":True});return
+        if self.path=="/api/student/logout":
+            cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_student_session");STUDENT_SESSIONS.pop(token.value if token else "",None);secure="; Secure" if COOKIE_SECURE else "";self.output({"ok":True},cookie=f"efas_student_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0{secure}");return
         user=self.require_admin()
         if not user:return
         if self.path=="/api/admin/calendar/import":
@@ -270,6 +272,34 @@ class Handler(SimpleHTTPRequestHandler):
                     db.execute("INSERT INTO settings(key,value) VALUES('official_calendar_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(version,))
                 self.output({"ok":True,"imported":len(events),"version":version});return
             except (ValueError,TypeError) as error:self.output({"error":str(error)},400);return
+        if self.path=="/api/admin/scores/bulk":
+            try:
+                subject_id=int(data.get('subject_id'));entries=data.get('entries')
+                if not isinstance(entries,list) or not 1<=len(entries)<=500:raise ValueError('Envie entre 1 e 500 resultados por vez.')
+                with connect() as db:
+                    sub=db.execute("SELECT exam_count,grading_mode FROM subjects WHERE id=?",(subject_id,)).fetchone()
+                    if not sub:raise ValueError('Disciplina inválida.')
+                    known={row[0] for row in db.execute("SELECT id FROM students")};prepared=[]
+                    def bulk_number(value,maximum,label):
+                        if value in (None,''):return None
+                        number=float(str(value).strip().replace(',','.'))
+                        if not 0<=number<=maximum:raise ValueError(f'{label} deve estar entre 0 e {maximum}.')
+                        return number
+                    for entry in entries:
+                        sid=str(entry.get('student_id','')).strip()
+                        if sid not in known:raise ValueError(f'Discente inválido: {sid}.')
+                        mode=sub['grading_mode'];status=None
+                        if mode=='apt':
+                            status=str(entry.get('status','')).strip()
+                            if status not in ('Apto','Inapto'):raise ValueError(f'Selecione Apto ou Inapto para o discente {sid}.')
+                            exam1=exam2=work=None
+                        elif mode=='taf':exam1=bulk_number(entry.get('exam1'),3,'1º TAF');exam2=bulk_number(entry.get('exam2'),3,'2º TAF');work=bulk_number(entry.get('work'),4,'3º TAF')
+                        elif sub['exam_count']==1:exam1=None;exam2=bulk_number(entry.get('exam2'),7,'AVF');work=bulk_number(entry.get('work'),3,'Trabalho')
+                        else:exam1=bulk_number(entry.get('exam1'),3,'AVC');exam2=bulk_number(entry.get('exam2'),4,'AVF');work=bulk_number(entry.get('work'),3,'Trabalho')
+                        prepared.append((sid,subject_id,exam1,exam2,work,status))
+                    db.executemany("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=excluded.exam1,exam2=excluded.exam2,work=excluded.work,status=excluded.status",prepared)
+                self.output({'ok':True,'saved':len(prepared)});return
+            except (ValueError,TypeError,sqlite3.Error) as error:self.output({'error':str(error)},400);return
         try:
             with connect() as db:
                 if self.path=="/api/admin/password":
