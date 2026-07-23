@@ -42,7 +42,7 @@ async function analyzePdfImport(event){
   try{
     const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)});
     const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'preview',student_id,pdf_base64})});
-    pdfImportStudentId=student_id;renderPdfScorePreview(result.entries);$('#student-pdf-confirm').textContent='Salvar notas importadas no banco';
+    pdfImportStudentId=student_id;renderPdfScorePreview(result.entries);$('#student-pdf-confirm').textContent='CONFIRMAR E SALVAR NOTA';
     message.textContent=`${result.entries.length} disciplina(s) reconhecida(s) para ${result.student.name} (matrícula ${student_id}). Confira a prévia antes de confirmar.`;
     $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'start'});
   }catch(error){
@@ -69,21 +69,11 @@ async function confirmPdfImport(event){
   if(!entries.length){message.textContent='Selecione pelo menos uma matéria para importar.';return}
   button.dataset.saving='true';button.disabled=true;button.textContent='Salvando...';message.textContent='Enviando e conferindo as notas no banco de dados...';
   try{
-    const student=cache.students.find(item=>String(item.id)===String(student_id));
-    for(const entry of entries){
-      await api('/api/admin/score',{
-        method:'POST',
-        body:JSON.stringify({
-          student_id,
-          subject_id:entry.subject_id,
-          exam1:entry.exam1??'',
-          exam2:entry.exam2??'',
-          work:entry.work??'',
-          status:entry.status??'',
-          observation:student?.observation||''
-        })
-      });
-    }
+    const result=await api('/api/admin/student-scores/import',{
+      method:'POST',
+      body:JSON.stringify({action:'apply',student_id,entries})
+    });
+    if(!result.ok||Number(result.saved)!==entries.length||!Array.isArray(result.confirmed))throw new Error('O servidor não confirmou todas as notas importadas.');
     const verification=await api('/api/admin/data');
     const matches=entries.every(entry=>{
       const saved=verification.scores.find(score=>String(score.student_id)===String(student_id)&&String(score.subject_id)===String(entry.subject_id));
@@ -95,7 +85,7 @@ async function confirmPdfImport(event){
       });
     });
     if(!matches)throw new Error('A API respondeu, mas a conferência encontrou uma nota diferente no banco de dados.');
-    const success=`${entries.length} disciplina(s) salva(s) pela mesma rotina do lançamento manual e conferida(s) no banco de dados.`;
+    const success=`${result.saved} disciplina(s) salva(s) e conferida(s) no banco de dados.`;
     message.textContent=success;formMessage.textContent=`Notas salvas para o discente selecionado. ${success}`;
     button.textContent='Importação concluída';pdfImportStudentId=student_id;
     $('#student-score-pdf').value='';
@@ -109,5 +99,4 @@ async function confirmPdfImport(event){
     button.dataset.saving='false';button.disabled=false;
   }
 }
-// Delegação mantém o clique ativo mesmo se a prévia for reconstruída.
-document.addEventListener('click',event=>{if(event.target.closest('#student-pdf-confirm'))confirmPdfImport(event)});
+$('#student-pdf-confirm').addEventListener('click',confirmPdfImport);
