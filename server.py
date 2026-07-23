@@ -11,6 +11,7 @@ DB = ROOT / "data" / "notas.db"
 HOST = os.environ.get("EFAS_HOST", "127.0.0.1")
 PORT = int(os.environ.get("EFAS_PORT", "4174"))
 SESSIONS = {}
+STUDENT_SESSIONS = {}
 USER = os.environ.get("EFAS_ADMIN_USER", "administrador")
 INITIAL_PASSWORD = os.environ.get("EFAS_INITIAL_ADMIN_PASSWORD", "")
 COOKIE_SECURE = os.environ.get("EFAS_COOKIE_SECURE", "0") == "1"
@@ -62,13 +63,14 @@ def initialize():
         db.executescript("""
         CREATE TABLE IF NOT EXISTS admins(username TEXT PRIMARY KEY,salt TEXT NOT NULL,password_hash TEXT NOT NULL,must_change INTEGER DEFAULT 1);
         CREATE TABLE IF NOT EXISTS exams(id INTEGER PRIMARY KEY,date TEXT,subject TEXT,time TEXT,place TEXT,type TEXT);
-        CREATE TABLE IF NOT EXISTS students(id TEXT PRIMARY KEY,name TEXT NOT NULL,rank TEXT NOT NULL,salt TEXT NOT NULL,access_hash TEXT NOT NULL,observation TEXT NOT NULL DEFAULT '');
+        CREATE TABLE IF NOT EXISTS students(id TEXT PRIMARY KEY,name TEXT NOT NULL,rank TEXT NOT NULL,salt TEXT NOT NULL,access_hash TEXT NOT NULL,observation TEXT NOT NULL DEFAULT '',must_change INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS subjects(id INTEGER PRIMARY KEY,hours INTEGER NOT NULL,name TEXT UNIQUE NOT NULL,exam_count INTEGER NOT NULL,grading_mode TEXT NOT NULL DEFAULT 'normal');
         CREATE TABLE IF NOT EXISTS scores(student_id TEXT NOT NULL,subject_id INTEGER NOT NULL,exam1 REAL,exam2 REAL,work REAL,status TEXT,PRIMARY KEY(student_id,subject_id));
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         """)
         columns = [x[1] for x in db.execute("PRAGMA table_info(students)")]
         if "observation" not in columns: db.execute("ALTER TABLE students ADD COLUMN observation TEXT NOT NULL DEFAULT ''")
+        if "must_change" not in columns: db.execute("ALTER TABLE students ADD COLUMN must_change INTEGER NOT NULL DEFAULT 1")
         subject_columns = [x[1] for x in db.execute("PRAGMA table_info(subjects)")]
         if "grading_mode" not in subject_columns: db.execute("ALTER TABLE subjects ADD COLUMN grading_mode TEXT NOT NULL DEFAULT 'normal'")
         score_columns = [x[1] for x in db.execute("PRAGMA table_info(scores)")]
@@ -200,6 +202,9 @@ class Handler(SimpleHTTPRequestHandler):
     def admin(self):
         cookies=SimpleCookie(self.headers.get("Cookie")); token=cookies.get("efas_session"); session=SESSIONS.get(token.value if token else "")
         return session[0] if session and session[1]>time.time() else None
+    def student(self):
+        cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_student_session");session=STUDENT_SESSIONS.get(token.value if token else "")
+        return session[0] if session and session[1]>time.time() else None
     def require_admin(self):
         user=self.admin()
         if not user:self.output({"error":"Sessão expirada. Entre novamente."},401)
@@ -240,7 +245,19 @@ class Handler(SimpleHTTPRequestHandler):
                 if not student or not verify(data.get("code",""),student["salt"],student["access_hash"]):self.output({"error":"Credenciais inválidas."},401);return
                 scores=[dict(x) for x in db.execute("SELECT sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(student["id"],))]
                 own=next((x for x in ranking(db) if x["id"]==student["id"]),None)
-            self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"scores":scores,"ranking":{k:own[k] for k in ("position","points","distributed","average")}});return
+            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"ranking":{k:own[k] for k in ("position","points","distributed","average")}},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
+        if self.path=="/api/student/password":
+            sid=self.student()
+            if not sid:self.output({"error":"Sessão expirada. Consulte suas notas novamente."},401);return
+            password=str(data.get("password",''));confirmation=str(data.get("confirmation",''))
+            if password!=confirmation:self.output({"error":"A confirmação da senha não confere."},400);return
+            if len(password)<8:self.output({"error":"A nova senha deve possuir pelo menos 8 caracteres."},400);return
+            with connect() as db:
+                current=db.execute("SELECT salt,access_hash FROM students WHERE id=?",(sid,)).fetchone()
+                if not current:self.output({"error":"Discente não encontrado."},404);return
+                if verify(password,current["salt"],current["access_hash"]):self.output({"error":"Escolha uma senha diferente da atual."},400);return
+                salt,digest=password_hash(password);db.execute("UPDATE students SET salt=?,access_hash=?,must_change=0 WHERE id=?",(salt,digest,sid))
+            self.output({"ok":True});return
         user=self.require_admin()
         if not user:return
         if self.path=="/api/admin/calendar/import":
@@ -263,7 +280,7 @@ class Handler(SimpleHTTPRequestHandler):
                 elif self.path=="/api/admin/student":
                     sid=str(data.get("student_id","")).strip(); code=str(data.get("access_code","")).strip()
                     if not sid or not data.get("name") or len(code)<6:raise ValueError("Preencha matrícula, nome e código com pelo menos 6 caracteres.")
-                    salt,digest=password_hash(code);db.execute("INSERT INTO students(id,name,rank,salt,access_hash,observation) VALUES(?,?,?,?,?,'') ON CONFLICT(id) DO UPDATE SET name=excluded.name,rank=excluded.rank,salt=excluded.salt,access_hash=excluded.access_hash",(sid,str(data.get("name","")).strip(),str(data.get("rank","")).strip(),salt,digest))
+                    salt,digest=password_hash(code);db.execute("INSERT INTO students(id,name,rank,salt,access_hash,observation,must_change) VALUES(?,?,?,?,?,'',1) ON CONFLICT(id) DO UPDATE SET name=excluded.name,rank=excluded.rank,salt=excluded.salt,access_hash=excluded.access_hash,must_change=1",(sid,str(data.get("name","")).strip(),str(data.get("rank","")).strip(),salt,digest))
                 elif self.path=="/api/admin/score":
                     sid=str(data.get("student_id","")).strip();subject_id=int(data.get("subject_id"));sub=db.execute("SELECT exam_count,grading_mode FROM subjects WHERE id=?",(subject_id,)).fetchone()
                     if not db.execute("SELECT 1 FROM students WHERE id=?",(sid,)).fetchone() or not sub:raise ValueError("Discente ou disciplina inválida.")

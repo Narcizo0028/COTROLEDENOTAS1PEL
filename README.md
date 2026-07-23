@@ -35,6 +35,8 @@ Nas execuções seguintes, o banco já contém o administrador e a variável da 
 
 O ranking completo é exclusivo do administrador. Cada discente recebe somente sua própria colocação, notas e observação individual.
 
+Após consultar o boletim pela primeira vez, o discente pode substituir a senha temporária fornecida pela administração. A troca exige uma sessão autenticada, confirmação da nova senha e no mínimo 8 caracteres. A opção permanece disponível no boletim para mudanças futuras; as senhas continuam armazenadas somente como hash PBKDF2 com salt.
+
 O painel administrativo também permite gerar um relatório PDF protegido com os nomes dos discentes, matrículas, disciplinas, componentes lançados, totais, data de geração e paginação. O arquivo é destinado à conferência posterior e só pode ser baixado durante uma sessão administrativa válida.
 
 O calendário pode ser atualizado pelo administrador por meio da importação do PDF oficial da EFAS. O sistema aceita arquivos de até 5 MB, valida o conteúdo, identifica disciplinas, datas, horários, duração e marcações V.F/V.C e somente então substitui o calendário. Arquivos inválidos ou parcialmente reconhecidos são recusados sem modificar os dados existentes.
