@@ -151,3 +151,20 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .empty-student-scores p { margin:5px 0 0; color:var(--muted); }
 .student-details-actions { display:flex; justify-content:flex-end; padding:18px 28px 24px; border-top:1px solid var(--line); }
 @media (max-width:700px) { .student-details-summary { grid-template-columns:repeat(3,1fr); }.student-details-summary > p { grid-column:1 / -1; }.student-details-dialog { max-height:94vh; }.student-details-head,#student-details-content,.student-details-actions { padding-left:18px; padding-right:18px; } }
+
+/* Importação assistida de notas por PDF */
+.pdf-score-import-panel { margin:24px 0; border-top-color:var(--blue-gray); }
+.pdf-score-import-form { display:grid; grid-template-columns:minmax(220px,1fr) minmax(260px,1fr) auto; gap:14px; align-items:end; margin-top:22px; }
+.pdf-score-import-form label { margin:0; }
+.pdf-score-import-form input,.pdf-score-import-form select { min-height:48px; }
+.pdf-score-import-form .panel-message { grid-column:1 / -1; margin:0; }
+#student-pdf-preview { margin-top:24px; padding-top:22px; border-top:1px solid var(--line); }
+.pdf-preview-head { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
+.pdf-preview-head h3 { margin:0 0 5px; font:500 1.35rem Georgia,serif; }
+.pdf-preview-head p { margin:0; color:var(--muted); font-size:.82rem; }
+.button-outline-dark { color:var(--black); background:#fff; border-color:var(--black); }
+.pdf-score-preview-table input[type="number"],.pdf-score-preview-table select { min-width:105px; margin:0; padding:8px; }
+.pdf-score-preview-table .pdf-import-check { width:20px; min-width:20px; min-height:20px; margin:0; accent-color:var(--khaki); }
+#student-pdf-confirm { margin-top:18px; }
+@media (max-width:820px) { .pdf-score-import-form { grid-template-columns:1fr 1fr; }.pdf-score-import-form .button { grid-column:1 / -1; }.pdf-preview-head { flex-direction:column; } }
+@media (max-width:560px) { .pdf-score-import-form { grid-template-columns:1fr; }.pdf-score-import-form .button { grid-column:auto; }.pdf-preview-head .button { width:100%; } }

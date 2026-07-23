@@ -95,6 +95,18 @@ No painel do administrador, a seção **Como deseja lançar as notas?** oferece 
 
 Os lançamentos são incrementais: campos deixados em branco preservam as notas já cadastradas. Ao selecionar novamente o mesmo discente e a mesma disciplina, os valores existentes são carregados para conferência e somente os componentes efetivamente alterados são atualizados.
 
+### Importar notas de um discente por PDF
+
+Na seção **Anexar notas de um discente por PDF**:
+
+1. Selecione o discente.
+2. Anexe um PDF de até 5 MB e 20 páginas.
+3. Clique em **Ler PDF e conferir notas**.
+4. Confira a prévia, corrija valores se necessário e desmarque matérias que não devem ser importadas.
+5. Clique em **Confirmar e salvar notas**.
+
+O PDF deve possuir texto selecionável, preferencialmente em tabela com as colunas **Disciplina**, **AVC**, **AVF**, **Trabalho** e **Resultado**. PDFs formados somente por fotografias ou digitalizações sem camada de texto precisam passar por OCR antes da importação. Nenhuma nota é gravada durante a leitura da prévia, e campos ausentes preservam os lançamentos anteriores.
+
 No boletim, o botão **Sair do boletim** encerra a sessão individual, oculta as notas e remove o código digitado. Recomenda-se sempre utilizá-lo em computadores compartilhados.
 
 No **Ranking completo do pelotão**, o administrador pode clicar no nome de qualquer discente para consultar as matérias que já possuem lançamento, as notas de cada componente, o total, a colocação e a média.
