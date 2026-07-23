@@ -29,7 +29,29 @@ $('#collective-score-form').addEventListener('submit',async e=>{e.preventDefault
 // Mantém a lista de discentes da importação sincronizada com o cadastro principal.
 new MutationObserver(()=>{const select=$('#pdf-score-student'),current=pdfImportStudentId||select.value;select.innerHTML=$('#score-student').innerHTML;select.value=current}).observe($('#score-student'),{childList:true});
 function renderPdfScorePreview(entries){const container=$('#student-pdf-preview-table'),confirmButton=$('#student-pdf-confirm');confirmButton.disabled=false;confirmButton.textContent='Confirmar e salvar notas';$('#student-pdf-confirm-message').textContent='';container.innerHTML=`<div class="table-wrap"><table class="grade-table pdf-score-preview-table"><thead><tr><th>Importar</th><th>Disciplina</th><th>AVC / 1º TAF</th><th>AVF / 2º TAF</th><th>Trabalho / 3º TAF</th><th>Resultado</th></tr></thead><tbody>${entries.map(entry=>{const subject=cache.subjects.find(item=>String(item.id)===String(entry.subject_id)),apt=subject?.grading_mode==='apt',taf=subject?.grading_mode==='taf',single=subject?.exam_count===1&&subject?.grading_mode==='normal';const scoreInput=(field,value,max,disabled=false)=>disabled?'—':`<input data-field="${field}" type="number" min="0" max="${max}" step="0.01" inputmode="decimal" value="${value??''}" aria-label="${field} de ${esc(entry.subject)}">`;return`<tr data-subject-id="${entry.subject_id}"><td><input class="pdf-import-check" type="checkbox" checked aria-label="Importar ${esc(entry.subject)}"></td><td><strong>${esc(entry.subject)}</strong><small class="table-sub">Confira os valores antes de salvar</small></td><td>${apt?'—':scoreInput('exam1',entry.exam1,3,single)}</td><td>${apt?'—':scoreInput('exam2',entry.exam2,taf?3:single?7:4)}</td><td>${apt?'—':scoreInput('work',entry.work,taf?4:3)}</td><td>${apt?`<select data-field="status" aria-label="Resultado de ${esc(entry.subject)}"><option value="">Selecione</option><option${entry.status==='Apto'?' selected':''}>Apto</option><option${entry.status==='Inapto'?' selected':''}>Inapto</option></select>`:'Pontuação'}</td></tr>`}).join('')}</tbody></table></div>`;$('#student-pdf-preview').hidden=false}
-$('#student-pdf-score-form').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget,file=$('#student-score-pdf').files[0],student_id=$('#pdf-score-student').value,button=$('#student-pdf-analyze-button'),message=form.querySelector('.panel-message');if(!file||!student_id)return;if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';return}button.disabled=true;message.textContent='Lendo o PDF e identificando as notas...';try{const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)}),result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'preview',student_id,pdf_base64})});pdfImportStudentId=student_id;renderPdfScorePreview(result.entries);message.textContent=`${result.entries.length} disciplina(s) reconhecida(s). Confira a prévia antes de confirmar.`}catch(error){message.textContent=error.message;$('#student-pdf-preview').hidden=true}finally{button.disabled=false}});
+async function analyzePdfImport(event){
+  event.preventDefault();
+  const form=$('#student-pdf-score-form'),file=$('#student-score-pdf').files[0],student_id=$('#pdf-score-student').value;
+  const button=$('#student-pdf-analyze-button'),message=form.querySelector('.panel-message');
+  if(!student_id){message.textContent='Selecione o discente antes de importar o PDF.';$('#pdf-score-student').focus();return}
+  if(!file){message.textContent='Selecione o arquivo PDF de notas.';$('#student-score-pdf').focus();return}
+  if(file.type&&file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf')){message.textContent='O arquivo selecionado precisa estar no formato PDF.';return}
+  if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';return}
+  button.disabled=true;button.textContent='Lendo o PDF...';message.textContent='Lendo o PDF e procurando a matrícula selecionada. Aguarde...';
+  try{
+    const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)});
+    const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'preview',student_id,pdf_base64})});
+    pdfImportStudentId=student_id;renderPdfScorePreview(result.entries);
+    message.textContent=`${result.entries.length} disciplina(s) reconhecida(s) para a matrícula ${student_id}. Confira a prévia antes de confirmar.`;
+    $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(error){
+    message.textContent=error.message||'Não foi possível importar o PDF.';$('#student-pdf-preview').hidden=true;
+  }finally{
+    button.disabled=false;button.textContent='Ler PDF e conferir notas';
+  }
+}
+$('#student-pdf-score-form').addEventListener('submit',analyzePdfImport);
+$('#student-pdf-analyze-button').addEventListener('click',analyzePdfImport);
 $('#student-pdf-cancel').addEventListener('click',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML='';$('#student-pdf-confirm-message').textContent=''});
 async function confirmPdfImport(event){
   event.preventDefault();

@@ -1,7 +1,17 @@
-Esta pasta deve permanecer sem banco no GitHub.
+# Dados e configurações locais
+data/*.db
+data/*.db-*
+.env
 
-No Render, o disco persistente deve ser montado em:
-/opt/render/project/src/data
+# Arquivos temporários do Python e do sistema
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
 
-O arquivo notas.db existente será fornecido pelo próprio disco.
-Nunca substitua esse arquivo por um banco vazio durante a publicação.
+# Logs e cópias de segurança locais
+*.log
+*.bak
+
+# Pacotes gerados para entrega
+pacotes-publicacao/
