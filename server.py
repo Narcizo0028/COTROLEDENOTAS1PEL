@@ -297,7 +297,7 @@ class Handler(SimpleHTTPRequestHandler):
                         elif sub['exam_count']==1:exam1=None;exam2=bulk_number(entry.get('exam2'),7,'AVF');work=bulk_number(entry.get('work'),3,'Trabalho')
                         else:exam1=bulk_number(entry.get('exam1'),3,'AVC');exam2=bulk_number(entry.get('exam2'),4,'AVF');work=bulk_number(entry.get('work'),3,'Trabalho')
                         prepared.append((sid,subject_id,exam1,exam2,work,status))
-                    db.executemany("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=excluded.exam1,exam2=excluded.exam2,work=excluded.work,status=excluded.status",prepared)
+                    db.executemany("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=COALESCE(excluded.exam1,scores.exam1),exam2=COALESCE(excluded.exam2,scores.exam2),work=COALESCE(excluded.work,scores.work),status=COALESCE(excluded.status,scores.status)",prepared)
                 self.output({'ok':True,'saved':len(prepared)});return
             except (ValueError,TypeError,sqlite3.Error) as error:self.output({'error':str(error)},400);return
         try:
@@ -329,7 +329,7 @@ class Handler(SimpleHTTPRequestHandler):
                     elif mode=='taf': exam1=number('exam1',3);exam2=number('exam2',3);work=number('work',4)
                     elif sub[0]==1: exam1=None;exam2=number("exam2",7);work=number("work",3)
                     else: exam1=number("exam1",3);exam2=number("exam2",4);work=number("work",3)
-                    db.execute("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=excluded.exam1,exam2=excluded.exam2,work=excluded.work,status=excluded.status",(sid,subject_id,exam1,exam2,work,status))
+                    db.execute("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=COALESCE(excluded.exam1,scores.exam1),exam2=COALESCE(excluded.exam2,scores.exam2),work=COALESCE(excluded.work,scores.work),status=COALESCE(excluded.status,scores.status)",(sid,subject_id,exam1,exam2,work,status))
                     db.execute("UPDATE students SET observation=? WHERE id=?",(str(data.get("observation","")).strip(),sid))
                 elif self.path=="/api/admin/logout":
                     cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);self.output({"ok":True},cookie="efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");return

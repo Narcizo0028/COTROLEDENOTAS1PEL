@@ -93,6 +93,8 @@ No painel do administrador, a seção **Como deseja lançar as notas?** oferece 
 - **Por discente:** mantém o discente selecionado depois de salvar, facilitando o preenchimento das demais disciplinas.
 - **Coletivo por matéria:** exibe todos os discentes em uma tabela e salva os resultados preenchidos de uma só vez.
 
+Os lançamentos são incrementais: campos deixados em branco preservam as notas já cadastradas. Ao selecionar novamente o mesmo discente e a mesma disciplina, os valores existentes são carregados para conferência e somente os componentes efetivamente alterados são atualizados.
+
 No boletim, o botão **Sair do boletim** encerra a sessão individual, oculta as notas e remove o código digitado. Recomenda-se sempre utilizá-lo em computadores compartilhados.
 
 No **Ranking completo do pelotão**, o administrador pode clicar no nome de qualquer discente para consultar as matérias que já possuem lançamento, as notas de cada componente, o total, a colocação e a média.
