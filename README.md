@@ -113,6 +113,12 @@ No boletim, o botão **Sair do boletim** encerra a sessão individual, oculta as
 
 No **Ranking completo do pelotão**, o administrador pode clicar no nome de qualquer discente para consultar as matérias que já possuem lançamento, as notas de cada componente, o total, a colocação e a média.
 
+## Importação de notas por planilha
+
+No painel administrativo, use **Importar notas por planilha** e baixe o modelo XLSX. Preencha matrícula, disciplina e somente os componentes que deseja lançar. A prévia permite conferir os valores antes da confirmação. Células vazias preservam as notas existentes, e a conclusão só é exibida depois que o servidor confere os registros no banco de dados.
+
+Formatos aceitos: `.xlsx` e `.csv`. Para CSV, mantenha os cabeçalhos `Matrícula`, `Disciplina`, `AVC`, `AVF`, `Trabalho` e `Resultado`.
+
 ## Checklist antes de publicar
 
 - Revisar nome, e-mail e contatos institucionais em `index.html`.

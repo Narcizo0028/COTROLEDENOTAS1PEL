@@ -4,7 +4,7 @@ from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import urlsplit
 from datetime import datetime
-import base64, binascii, difflib, hashlib, hmac, io, json, os, re, secrets, sqlite3, time, unicodedata
+import base64, binascii, csv, difflib, hashlib, hmac, io, json, os, re, secrets, sqlite3, time, unicodedata
 
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "notas.db"
@@ -17,7 +17,7 @@ INITIAL_PASSWORD = os.environ.get("EFAS_INITIAL_ADMIN_PASSWORD", "")
 COOKIE_SECURE = os.environ.get("EFAS_COOKIE_SECURE", "0") == "1"
 PUBLIC_FILES = {
     "/index.html", "/admin.html", "/styles.css", "/script.js", "/admin.js",
-    "/assets/escudo-efas.png",
+    "/assets/escudo-efas.png", "/assets/modelo-importacao-notas.xlsx",
 }
 
 SUBJECTS = [
@@ -224,6 +224,74 @@ def parse_student_scores_pdf(raw, subjects, student_id):
     if not validated:raise ValueError(f'Nenhuma nota válida foi encontrada para a matrícula {student_id}.')
     return sorted(validated,key=lambda item:item['subject'])
 
+def parse_scores_spreadsheet(raw, filename, subjects, students):
+    """Lê XLSX ou CSV e devolve apenas as notas preenchidas, prontas para conferência."""
+    def normalized(value):
+        value=unicodedata.normalize('NFKD',str(value or '')).encode('ascii','ignore').decode().lower()
+        return re.sub(r'[^a-z0-9]+',' ',value).strip()
+    def number(value):
+        if value in (None,''):return None
+        if isinstance(value,(int,float)):return float(value)
+        text=str(value).strip()
+        if not text or text in ('-','—'):return None
+        return float(text.replace('.','').replace(',','.')) if ',' in text else float(text)
+    extension=Path(filename or '').suffix.lower()
+    try:
+        if extension=='.csv':
+            text=raw.decode('utf-8-sig')
+            dialect=csv.Sniffer().sniff(text[:4096],delimiters=';,')
+            rows=list(csv.reader(io.StringIO(text),dialect))
+        elif extension=='.xlsx':
+            from openpyxl import load_workbook
+            workbook=load_workbook(io.BytesIO(raw),read_only=True,data_only=True)
+            rows=[list(row) for row in workbook.active.iter_rows(values_only=True)]
+            workbook.close()
+        else:raise ValueError('Envie uma planilha no formato XLSX ou CSV.')
+    except ValueError:raise
+    except Exception as error:raise ValueError('Não foi possível ler a planilha. Use o modelo fornecido pelo sistema.') from error
+    if len(rows)<2:raise ValueError('A planilha não possui linhas de notas.')
+    headers=[normalized(value) for value in rows[0]]
+    aliases={
+      'student_id':('matricula','matricula do discente'),
+      'subject':('disciplina','materia'),
+      'exam1':('avc','avaliacao complementar'),
+      'exam2':('avf','avaliacao final'),
+      'work':('trabalho',),
+      'status':('resultado','status','situacao'),
+    }
+    columns={key:next((i for i,value in enumerate(headers) if value in names),None) for key,names in aliases.items()}
+    if columns['student_id'] is None or columns['subject'] is None:raise ValueError('A planilha deve conter as colunas Matrícula e Disciplina.')
+    subject_map={normalized(item['name']):item for item in subjects};student_map={str(item['id']):item for item in students}
+    entries={};errors=[]
+    for line,row in enumerate(rows[1:],2):
+        row=list(row);get=lambda field:row[columns[field]] if columns[field] is not None and columns[field]<len(row) else None
+        raw_sid=get('student_id')
+        sid=str(int(raw_sid)) if isinstance(raw_sid,(int,float)) and float(raw_sid).is_integer() else re.sub(r'\D','',str(raw_sid or ''))
+        subject_name=normalized(get('subject'))
+        if not sid and not subject_name:continue
+        student=student_map.get(sid);subject=subject_map.get(subject_name)
+        if not student:errors.append(f'Linha {line}: matrícula {sid or "vazia"} não cadastrada.');continue
+        if not subject:errors.append(f'Linha {line}: disciplina não reconhecida.');continue
+        try:
+            mode=subject['grading_mode'];entry=entries.setdefault((sid,subject['id']),{'student_id':sid,'student':student['name'],'subject_id':subject['id'],'subject':subject['name'],'exam1':None,'exam2':None,'work':None,'status':None})
+            if mode=='apt':
+                status=str(get('status') or '').strip().title()
+                if status and status not in ('Apto','Inapto'):raise ValueError('o resultado deve ser Apto ou Inapto')
+                if status:entry['status']=status
+            else:
+                maxima={'exam1':3,'exam2':3 if mode=='taf' else 7 if subject['exam_count']==1 else 4,'work':4 if mode=='taf' else 3}
+                for field,maximum in maxima.items():
+                    if field=='exam1' and subject['exam_count']==1 and mode=='normal':continue
+                    value=number(get(field))
+                    if value is not None:
+                        if not 0<=value<=maximum:raise ValueError(f'{field} deve estar entre 0 e {maximum}')
+                        entry[field]=value
+        except (ValueError,TypeError) as error:errors.append(f'Linha {line}: {error}.')
+    valid=[entry for entry in entries.values() if entry['status'] or any(entry[field] is not None for field in ('exam1','exam2','work'))]
+    if errors:raise ValueError(' '.join(errors[:8])+(' Há outros erros.' if len(errors)>8 else ''))
+    if not valid:raise ValueError('Nenhuma nota preenchida foi encontrada na planilha.')
+    return sorted(valid,key=lambda item:(item['student'],item['subject']))
+
 def ranking(db):
     rows = db.execute("""SELECT s.id,s.name,s.rank,s.observation,
       COALESCE(SUM(CASE WHEN sub.grading_mode='apt' THEN 0 ELSE COALESCE(sc.exam1,0)+COALESCE(sc.exam2,0)+COALESCE(sc.work,0) END),0) points,
@@ -369,6 +437,47 @@ class Handler(SimpleHTTPRequestHandler):
                     db.execute("INSERT INTO settings(key,value) VALUES('official_calendar_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(version,))
                 self.output({"ok":True,"imported":len(events),"version":version});return
             except (ValueError,TypeError) as error:self.output({"error":str(error)},400);return
+        if self.path=="/api/admin/scores/spreadsheet":
+            try:
+                action=str(data.get('action','preview'))
+                with connect() as db:
+                    subjects=subject_rows(db);students=[dict(row) for row in db.execute("SELECT id,name FROM students")]
+                    if action=='preview':
+                        raw=base64.b64decode(str(data.get('file_base64','')),validate=True)
+                        if len(raw)>5*1024*1024:raise ValueError('A planilha deve possuir no máximo 5 MB.')
+                        entries=parse_scores_spreadsheet(raw,str(data.get('filename','')),subjects,students)
+                        self.output({'ok':True,'entries':entries});return
+                    if action!='apply':raise ValueError('Ação de importação inválida.')
+                    entries=data.get('entries');subject_map={int(item['id']):item for item in subjects};student_ids={str(item['id']) for item in students}
+                    if not isinstance(entries,list) or not entries:raise ValueError('Nenhuma nota foi selecionada para importar.')
+                    prepared=[]
+                    def sheet_number(value,maximum,label):
+                        if value in (None,''):return None
+                        number=float(str(value).strip().replace(',','.'))
+                        if not 0<=number<=maximum:raise ValueError(f'{label} deve estar entre 0 e {maximum}.')
+                        return number
+                    for entry in entries:
+                        sid=str(entry.get('student_id','')).strip();subject=subject_map.get(int(entry.get('subject_id')))
+                        if sid not in student_ids or not subject:raise ValueError('A planilha contém um discente ou disciplina inválida.')
+                        mode=subject['grading_mode'];status=None
+                        if mode=='apt':
+                            status=str(entry.get('status','')).strip()
+                            if status not in ('Apto','Inapto'):raise ValueError(f"Selecione Apto ou Inapto para {subject['name']}.")
+                            exam1=exam2=work=None
+                        elif mode=='taf':exam1=sheet_number(entry.get('exam1'),3,'1º TAF');exam2=sheet_number(entry.get('exam2'),3,'2º TAF');work=sheet_number(entry.get('work'),4,'3º TAF')
+                        elif subject['exam_count']==1:exam1=None;exam2=sheet_number(entry.get('exam2'),7,'AVF');work=sheet_number(entry.get('work'),3,'Trabalho')
+                        else:exam1=sheet_number(entry.get('exam1'),3,'AVC');exam2=sheet_number(entry.get('exam2'),4,'AVF');work=sheet_number(entry.get('work'),3,'Trabalho')
+                        if mode!='apt' and exam1 is None and exam2 is None and work is None:continue
+                        prepared.append((sid,subject['id'],exam1,exam2,work,status))
+                    if not prepared:raise ValueError('Preencha pelo menos uma nota antes de confirmar.')
+                    db.executemany("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=COALESCE(excluded.exam1,scores.exam1),exam2=COALESCE(excluded.exam2,scores.exam2),work=COALESCE(excluded.work,scores.work),status=COALESCE(excluded.status,scores.status)",prepared)
+                    db.commit()
+                    confirmed=0
+                    for sid,subject_id,*_ in prepared:
+                        confirmed+=bool(db.execute("SELECT 1 FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone())
+                    if confirmed!=len(prepared):raise sqlite3.Error('A conferência das notas gravadas não foi concluída.')
+                self.output({'ok':True,'saved':confirmed});return
+            except (ValueError,TypeError,sqlite3.Error,binascii.Error) as error:self.output({'error':str(error)},400);return
         if self.path=="/api/admin/student-scores/import":
             try:
                 sid=str(data.get('student_id','')).strip();action=str(data.get('action','preview'))
