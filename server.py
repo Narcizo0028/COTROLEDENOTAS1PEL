@@ -52,10 +52,26 @@ def password_hash(password, salt=None):
 def verify(password, salt, digest):
     return hmac.compare_digest(password_hash(password, bytes.fromhex(salt))[1], digest)
 
+SCORE_UPSERT = """INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status)
+VALUES(?,?,?,?,?,?)
+ON CONFLICT(student_id,subject_id) DO UPDATE SET
+exam1=excluded.exam1,exam2=excluded.exam2,work=excluded.work,status=excluded.status"""
+
 def connect():
-    db = sqlite3.connect(DB)
+    db = sqlite3.connect(DB, timeout=30, check_same_thread=False)
     db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA busy_timeout=30000")
+    db.execute("PRAGMA synchronous=NORMAL")
     return db
+
+def save_score(db, student_id, subject_id, exam1, exam2, work, status):
+    """Grava o lançamento exatamente como enviado; campos vazios limpam o valor anterior."""
+    if status is None and exam1 is None and exam2 is None and work is None:
+        db.execute("DELETE FROM scores WHERE student_id=? AND subject_id=?", (student_id, subject_id))
+        return False
+    db.execute(SCORE_UPSERT, (student_id, subject_id, exam1, exam2, work, status))
+    return True
 
 def initialize():
     DB.parent.mkdir(exist_ok=True)
@@ -91,6 +107,7 @@ def initialize():
         db.execute("""UPDATE scores SET exam2=COALESCE(exam2,exam1),exam1=NULL
           WHERE exam1 IS NOT NULL AND subject_id IN
           (SELECT id FROM subjects WHERE exam_count=1 AND grading_mode='normal')""")
+        db.commit()
 
 def subject_rows(db):
     return [dict(x) for x in db.execute("SELECT id,hours,name,exam_count,grading_mode FROM subjects ORDER BY hours,name")]
@@ -394,16 +411,17 @@ class Handler(SimpleHTTPRequestHandler):
                         if not subject:raise ValueError('O PDF contém uma disciplina inválida.')
                         mode=subject['grading_mode'];status=None
                         if mode=='apt':
-                            status=str(entry.get('status','')).strip()
-                            if status not in ('Apto','Inapto'):raise ValueError(f"Selecione Apto ou Inapto para {subject['name']}.")
+                            status=str(entry.get('status','')).strip() or None
+                            if status not in (None,'Apto','Inapto'):raise ValueError(f"Selecione Apto ou Inapto para {subject['name']}.")
                             exam1=exam2=work=None
                         elif mode=='taf':exam1=imported_number(entry.get('exam1'),3,'1º TAF');exam2=imported_number(entry.get('exam2'),3,'2º TAF');work=imported_number(entry.get('work'),4,'3º TAF')
                         elif subject['exam_count']==1:exam1=None;exam2=imported_number(entry.get('exam2'),7,'AVF');work=imported_number(entry.get('work'),3,'Trabalho')
                         else:exam1=imported_number(entry.get('exam1'),3,'AVC');exam2=imported_number(entry.get('exam2'),4,'AVF');work=imported_number(entry.get('work'),3,'Trabalho')
                         if mode!='apt' and exam1 is None and exam2 is None and work is None:continue
+                        if mode=='apt' and status is None:continue
                         prepared.append((sid,subject_id,exam1,exam2,work,status))
                     if not prepared:raise ValueError('Preencha pelo menos uma nota antes de confirmar.')
-                    db.executemany("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=COALESCE(excluded.exam1,scores.exam1),exam2=COALESCE(excluded.exam2,scores.exam2),work=COALESCE(excluded.work,scores.work),status=COALESCE(excluded.status,scores.status)",prepared)
+                    for item in prepared:save_score(db,*item)
                     db.commit()
                     saved_ids=[item[1] for item in prepared]
                     placeholders=','.join('?' for _ in saved_ids)
@@ -435,15 +453,33 @@ class Handler(SimpleHTTPRequestHandler):
                         if sid not in known:raise ValueError(f'Discente inválido: {sid}.')
                         mode=sub['grading_mode'];status=None
                         if mode=='apt':
-                            status=str(entry.get('status','')).strip()
-                            if status not in ('Apto','Inapto'):raise ValueError(f'Selecione Apto ou Inapto para o discente {sid}.')
+                            status=str(entry.get('status','')).strip() or None
+                            if status not in (None,'Apto','Inapto'):raise ValueError(f'Selecione Apto ou Inapto para o discente {sid}.')
                             exam1=exam2=work=None
                         elif mode=='taf':exam1=bulk_number(entry.get('exam1'),3,'1º TAF');exam2=bulk_number(entry.get('exam2'),3,'2º TAF');work=bulk_number(entry.get('work'),4,'3º TAF')
                         elif sub['exam_count']==1:exam1=None;exam2=bulk_number(entry.get('exam2'),7,'AVF');work=bulk_number(entry.get('work'),3,'Trabalho')
                         else:exam1=bulk_number(entry.get('exam1'),3,'AVC');exam2=bulk_number(entry.get('exam2'),4,'AVF');work=bulk_number(entry.get('work'),3,'Trabalho')
                         prepared.append((sid,subject_id,exam1,exam2,work,status))
-                    db.executemany("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=COALESCE(excluded.exam1,scores.exam1),exam2=COALESCE(excluded.exam2,scores.exam2),work=COALESCE(excluded.work,scores.work),status=COALESCE(excluded.status,scores.status)",prepared)
-                self.output({'ok':True,'saved':len(prepared)});return
+                    if not prepared:raise ValueError('Nenhum lançamento para gravar.')
+                    saved=0;cleared=0
+                    for item in prepared:
+                        if save_score(db,*item):saved+=1
+                        else:cleared+=1
+                    db.commit()
+                    def same_score(row,exam1,exam2,work,status):
+                        if not row:return False
+                        for expected,actual in ((exam1,row['exam1']),(exam2,row['exam2']),(work,row['work'])):
+                            if expected is None and actual is None:continue
+                            if expected is None or actual is None:return False
+                            if abs(float(actual)-float(expected))>=0.0001:return False
+                        return (row['status'] or None)==(status or None)
+                    for sid,_,exam1,exam2,work,status in prepared:
+                        row=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
+                        if status is None and exam1 is None and exam2 is None and work is None:
+                            if row:raise sqlite3.Error(f'A limpeza do lançamento do discente {sid} não foi concluída.')
+                        elif not same_score(row,exam1,exam2,work,status):
+                            raise sqlite3.Error(f'A conferência do lançamento do discente {sid} falhou.')
+                self.output({'ok':True,'saved':saved,'cleared':cleared});return
             except (ValueError,TypeError,sqlite3.Error) as error:self.output({'error':str(error)},400);return
         try:
             with connect() as db:
@@ -468,14 +504,21 @@ class Handler(SimpleHTTPRequestHandler):
                         return value
                     mode=sub[1];status=None
                     if mode=='apt':
-                        status=str(data.get('status','')).strip()
-                        if status not in ('Apto','Inapto'):raise ValueError('Selecione Apto ou Inapto.')
+                        status=str(data.get('status','')).strip() or None
+                        if status not in (None,'Apto','Inapto'):raise ValueError('Selecione Apto ou Inapto.')
                         exam1=exam2=work=None
                     elif mode=='taf': exam1=number('exam1',3);exam2=number('exam2',3);work=number('work',4)
                     elif sub[0]==1: exam1=None;exam2=number("exam2",7);work=number("work",3)
                     else: exam1=number("exam1",3);exam2=number("exam2",4);work=number("work",3)
-                    db.execute("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=COALESCE(excluded.exam1,scores.exam1),exam2=COALESCE(excluded.exam2,scores.exam2),work=COALESCE(excluded.work,scores.work),status=COALESCE(excluded.status,scores.status)",(sid,subject_id,exam1,exam2,work,status))
+                    save_score(db,sid,subject_id,exam1,exam2,work,status)
                     db.execute("UPDATE students SET observation=? WHERE id=?",(str(data.get("observation","")).strip(),sid))
+                    db.commit()
+                    if status is not None or exam1 is not None or exam2 is not None or work is not None:
+                        confirmed=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
+                        if not confirmed:raise sqlite3.Error('A conferência da nota gravada não foi concluída.')
+                    else:
+                        if db.execute("SELECT 1 FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone():
+                            raise sqlite3.Error('A limpeza da nota não foi concluída.')
                 elif self.path=="/api/admin/logout":
                     cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);self.output({"ok":True},cookie="efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");return
                 else:self.output({"error":"Rota inexistente."},404);return
