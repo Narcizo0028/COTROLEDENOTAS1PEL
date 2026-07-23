@@ -1,7 +1,5 @@
 # Controle de Notas — CFS / 1º Pelotão
 
-> Publicação limpa: utilize somente o Render e siga primeiro o arquivo `PUBLICAR-NO-RENDER.md`. Para preservar os dados, atualize o serviço existente e mantenha o disco persistente montado em `/opt/render/project/src/data`.
-
 Portal institucional responsivo da EFAS para calendário, consulta individual de notas e administração restrita. A interface usa HTML5, CSS3 e JavaScript puro; o backend usa apenas a biblioteca padrão do Python e SQLite.
 
 ## Estrutura do projeto
@@ -108,6 +106,8 @@ Na seção **Anexar notas de um discente por PDF**:
 5. Clique em **Confirmar e salvar notas**.
 
 O PDF deve possuir texto selecionável, preferencialmente em tabela com as colunas **Disciplina**, **AVC**, **AVF**, **Trabalho** e **Resultado**. PDFs formados somente por fotografias ou digitalizações sem camada de texto precisam passar por OCR antes da importação. Nenhuma nota é gravada durante a leitura da prévia, e campos ausentes preservam os lançamentos anteriores.
+
+O leitor também aceita o relatório administrativo completo, com vários discentes. Nesse caso, utiliza a coluna **Matrícula** para importar exclusivamente as linhas do discente selecionado. A gravação somente é liberada depois da prévia e da validação dos limites de cada componente.
 
 No boletim, o botão **Sair do boletim** encerra a sessão individual, oculta as notas e remove o código digitado. Recomenda-se sempre utilizá-lo em computadores compartilhados.
 

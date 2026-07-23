@@ -37,12 +37,13 @@ async function analyzePdfImport(event){
   if(!file){message.textContent='Selecione o arquivo PDF de notas.';$('#student-score-pdf').focus();return}
   if(file.type&&file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf')){message.textContent='O arquivo selecionado precisa estar no formato PDF.';return}
   if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';return}
-  button.disabled=true;button.textContent='Lendo o PDF...';message.textContent='Lendo o PDF e procurando a matrícula selecionada. Aguarde...';
+  $('#student-pdf-preview').hidden=true;$('#student-pdf-confirm-message').textContent='';
+  button.disabled=true;button.textContent='Lendo o PDF...';message.textContent='Lendo as disciplinas e notas do PDF. Elas serão vinculadas ao discente selecionado. Aguarde...';
   try{
     const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)});
     const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'preview',student_id,pdf_base64})});
     pdfImportStudentId=student_id;renderPdfScorePreview(result.entries);
-    message.textContent=`${result.entries.length} disciplina(s) reconhecida(s) para a matrícula ${student_id}. Confira a prévia antes de confirmar.`;
+    message.textContent=`${result.entries.length} disciplina(s) reconhecida(s) para ${result.student.name} (matrícula ${student_id}). Confira a prévia antes de confirmar.`;
     $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'start'});
   }catch(error){
     message.textContent=error.message||'Não foi possível importar o PDF.';$('#student-pdf-preview').hidden=true;
@@ -52,6 +53,8 @@ async function analyzePdfImport(event){
 }
 $('#student-pdf-score-form').addEventListener('submit',analyzePdfImport);
 $('#student-pdf-analyze-button').addEventListener('click',analyzePdfImport);
+$('#pdf-score-student').addEventListener('change',()=>{pdfImportStudentId='';$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML=''});
+$('#student-score-pdf').addEventListener('change',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML=''});
 $('#student-pdf-cancel').addEventListener('click',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML='';$('#student-pdf-confirm-message').textContent=''});
 async function confirmPdfImport(event){
   event.preventDefault();

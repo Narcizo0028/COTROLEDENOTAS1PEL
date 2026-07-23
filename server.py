@@ -127,92 +127,102 @@ def parse_calendar_pdf(raw):
     if len(events)!=len(set(events)):raise ValueError('O PDF contém avaliações duplicadas.')
     return sorted(events,key=lambda item:(item[0],item[1]))
 
-def parse_student_scores_pdf(raw, subjects, student_id=None):
-    """Lê tabelas ou linhas de um PDF de notas e devolve uma prévia para conferência."""
+def parse_student_scores_pdf(raw, subjects, student_id):
+    """Extrai notas do relatório individual ou filtra o relatório geral por matrícula."""
     import pdfplumber
     if not raw.startswith(b'%PDF'):raise ValueError('O arquivo selecionado não é um PDF válido.')
-    try:
-        with pdfplumber.open(io.BytesIO(raw)) as document:
-            if not 1<=len(document.pages)<=20:raise ValueError('O PDF deve possuir entre 1 e 20 páginas.')
-            pages=[(page.extract_text(x_tolerance=2,y_tolerance=3) or '',page.extract_tables() or []) for page in document.pages]
-    except ValueError:raise
-    except Exception as error:raise ValueError('Não foi possível ler o conteúdo do PDF.') from error
-    def norm(value):
+    student_id=re.sub(r'\D','',str(student_id or ''))
+    if not student_id:raise ValueError('Selecione o discente antes de ler o PDF.')
+
+    def normalized(value):
         value=unicodedata.normalize('NFKD',str(value or '')).encode('ascii','ignore').decode().lower()
         return re.sub(r'[^a-z0-9]+',' ',value).strip()
-    def number(value):
-        match=re.search(r'(?<!\d)(\d{1,2}(?:[,.]\d{1,2})?)(?!\d)',str(value or ''))
-        return float(match.group(1).replace(',','.')) if match else None
-    def match_subject(value):
-        candidate=norm(value)
-        if not candidate:return None
-        exact=next((subject for subject in subjects if norm(subject['name'])==candidate),None)
-        if exact:return exact
-        contained=[subject for subject in subjects if norm(subject['name']) in candidate]
-        if contained:return max(contained,key=lambda item:len(norm(item['name'])))
-        ranked=[(difflib.SequenceMatcher(None,candidate,norm(subject['name'])).ratio(),subject) for subject in subjects]
-        ratio,subject=max(ranked,key=lambda item:item[0]);return subject if ratio>=.76 else None
-    def field_for(header):
-        value=norm(header)
-        if 'avc' in value or 'complementar' in value or '1 taf' in value:return 'exam1'
-        if 'avf' in value or 'avaliacao final' in value or '2 taf' in value:return 'exam2'
-        if 'trabalho' in value or '3 taf' in value:return 'work'
-        if any(word in value for word in ('resultado','situacao','status')):return 'status'
+
+    def grade(value):
+        value=str(value or '').strip()
+        if not value or value in ('-','—'):return None
+        match=re.fullmatch(r'\s*(\d{1,2})(?:[,.](\d{1,2}))?\s*',value)
+        if not match:return None
+        return float(f"{match.group(1)}.{match.group(2) or '0'}")
+
+    subject_names={normalized(item['name']):item for item in subjects}
+    def identify_subject(value):
+        candidate=normalized(value)
+        if candidate in subject_names:return subject_names[candidate]
+        matches=[(difflib.SequenceMatcher(None,candidate,name).ratio(),item) for name,item in subject_names.items()]
+        ratio,item=max(matches,key=lambda pair:pair[0])
+        return item if ratio>=.90 else None
+
+    def component(header):
+        header=normalized(header)
+        if 'avc' in header or 'avaliacao complementar' in header or '1 taf' in header:return 'exam1'
+        if 'avf' in header or 'avaliacao final' in header or '2 taf' in header:return 'exam2'
+        if 'trabalho' in header or '3 taf' in header:return 'work'
+        if 'resultado' in header or 'situacao' in header or 'status' in header:return 'status'
         return None
-    found={};student_id=str(student_id or '').strip();tables_with_student_column=0;matched_student_rows=0
-    for _,tables in pages:
-        for table in tables:
-            if not table:continue
-            header_index=next((index for index,row in enumerate(table[:6]) if any('disciplina' in norm(cell) or 'materia' in norm(cell) for cell in (row or []))),None)
-            if header_index is None:continue
-            headers=table[header_index] or [];mapping={index:field_for(cell) for index,cell in enumerate(headers)}
-            student_column=next((index for index,cell in enumerate(headers) if 'matricula' in norm(cell)),None)
-            subject_column=next((index for index,cell in enumerate(headers) if 'disciplina' in norm(cell) or 'materia' in norm(cell)),None)
-            if student_column is not None:tables_with_student_column+=1
-            for row in table[header_index+1:]:
-                cells=[str(cell or '').strip() for cell in (row or [])]
-                if student_id and student_column is not None:
-                    row_student=re.sub(r'\D','',cells[student_column] if student_column<len(cells) else '')
-                    if row_student!=re.sub(r'\D','',student_id):continue
-                    matched_student_rows+=1
-                subject_source=cells[subject_column] if subject_column is not None and subject_column<len(cells) else ' '.join(cells)
-                subject=match_subject(subject_source)
-                if not subject:continue
-                entry=found.setdefault(subject['id'],{'subject_id':subject['id'],'subject':subject['name'],'exam1':None,'exam2':None,'work':None,'status':None})
-                for index,field in mapping.items():
-                    if not field or index>=len(cells):continue
-                    if field=='status':
-                        status=norm(cells[index]);entry[field]='Inapto' if 'inapto' in status else 'Apto' if 'apto' in status else entry[field]
-                    else:
-                        value=number(cells[index]);entry[field]=value if value is not None else entry[field]
-    if student_id and tables_with_student_column and not matched_student_rows:raise ValueError(f'A matrícula {student_id} não foi encontrada no PDF. Confirme o discente selecionado e o arquivo enviado.')
-    if not found:
-        for text,_ in pages:
-            for line in text.splitlines():
-                if student_id and student_id not in re.sub(r'\s','',line):continue
-                subject=match_subject(line)
-                if not subject:continue
-                entry={'subject_id':subject['id'],'subject':subject['name'],'exam1':None,'exam2':None,'work':None,'status':None};line_norm=norm(line)
-                if subject['grading_mode']=='apt':entry['status']='Inapto' if 'inapto' in line_norm else 'Apto' if 'apto' in line_norm else None
+
+    try:
+        with pdfplumber.open(io.BytesIO(raw)) as document:
+            if not 1<=len(document.pages)<=50:raise ValueError('O PDF deve possuir entre 1 e 50 páginas.')
+            tables=[table for page in document.pages for table in (page.extract_tables() or []) if table]
+    except ValueError:raise
+    except Exception as error:raise ValueError('Não foi possível abrir o PDF. Confirme se o arquivo não está protegido ou corrompido.') from error
+
+    if not tables:raise ValueError('O PDF não possui uma tabela de notas legível. Use o relatório gerado pelo sistema ou um PDF com texto selecionável.')
+
+    entries={};matched_rows=0;recognized_tables=0;has_student_column=False
+    for table in tables:
+        header_index=next((index for index,row in enumerate(table[:8]) if any('disciplina' in normalized(cell) or 'materia' in normalized(cell) for cell in (row or []))),None)
+        if header_index is None:continue
+        headers=[str(cell or '') for cell in (table[header_index] or [])]
+        subject_column=next((index for index,value in enumerate(headers) if 'disciplina' in normalized(value) or 'materia' in normalized(value)),None)
+        student_column=next((index for index,value in enumerate(headers) if 'matricula' in normalized(value)),None)
+        if subject_column is None:continue
+        recognized_tables+=1
+        has_student_column=has_student_column or student_column is not None
+        columns={index:component(value) for index,value in enumerate(headers)}
+
+        for row in table[header_index+1:]:
+            cells=[str(cell or '').strip() for cell in (row or [])]
+            if student_column is not None:
+                row_id=re.sub(r'\D','',cells[student_column] if student_column<len(cells) else '')
+                if row_id!=student_id:continue
+            matched_rows+=1
+            subject=identify_subject(cells[subject_column] if subject_column<len(cells) else '')
+            if not subject:continue
+            entry=entries.setdefault(subject['id'],{'subject_id':subject['id'],'subject':subject['name'],'exam1':None,'exam2':None,'work':None,'status':None})
+            for index,field in columns.items():
+                if not field or index>=len(cells):continue
+                if field=='status':
+                    result=normalized(cells[index])
+                    if 'inapto' in result:entry['status']='Inapto'
+                    elif 'apto' in result:entry['status']='Apto'
                 else:
-                    remainder=re.sub(re.escape(subject['name']),'',line,flags=re.IGNORECASE);values=[float(value.replace(',','.')) for value in re.findall(r'(?<!\d)\d{1,2}(?:[,.]\d{1,2})?(?!\d)',remainder)]
-                    expected=3 if subject['grading_mode']=='taf' or subject['exam_count']==2 else 2
-                    values=values[:expected]
-                    if subject['grading_mode']=='taf' or subject['exam_count']==2:
-                        for key,value in zip(('exam1','exam2','work'),values):entry[key]=value
-                    else:
-                        for key,value in zip(('exam2','work'),values):entry[key]=value
-                if entry['status'] or any(entry[key] is not None for key in ('exam1','exam2','work')):found[subject['id']]=entry
-    entries=[]
-    for entry in found.values():
-        subject=next(item for item in subjects if item['id']==entry['subject_id']);mode=subject['grading_mode']
-        maxima={'exam1':3,'exam2':3 if mode=='taf' else 7 if subject['exam_count']==1 else 4,'work':4 if mode=='taf' else 3}
-        for key,maximum in maxima.items():
-            if entry[key] is not None and not 0<=entry[key]<=maximum:entry[key]=None
-        if mode=='apt' and entry['status'] not in ('Apto','Inapto'):entry['status']=None
-        if entry['status'] or any(entry[key] is not None for key in ('exam1','exam2','work')):entries.append(entry)
-    if not entries:raise ValueError('Nenhuma disciplina e nota reconhecível foi encontrada. Use um PDF com colunas Disciplina, AVC, AVF e Trabalho, ou confira se o documento possui texto selecionável.')
-    return sorted(entries,key=lambda item:item['subject'])
+                    value=grade(cells[index])
+                    if value is not None:entry[field]=value
+
+    if not recognized_tables:raise ValueError('A tabela do PDF não possui a coluna Disciplina.')
+    if not matched_rows:
+        if has_student_column:raise ValueError(f'A matrícula {student_id} não foi encontrada no PDF.')
+        raise ValueError('Nenhuma linha de disciplina foi encontrada no relatório individual.')
+
+    validated=[]
+    for subject_id,entry in entries.items():
+        subject=next(item for item in subjects if item['id']==subject_id);mode=subject['grading_mode']
+        if mode=='apt':
+            entry['exam1']=entry['exam2']=entry['work']=None
+            if entry['status'] not in ('Apto','Inapto'):continue
+        else:
+            if subject['exam_count']==1 and mode=='normal':entry['exam1']=None
+            maxima={'exam1':3,'exam2':3 if mode=='taf' else 7 if subject['exam_count']==1 else 4,'work':4 if mode=='taf' else 3}
+            for field,maximum in maxima.items():
+                value=entry[field]
+                if value is not None and not 0<=value<=maximum:raise ValueError(f"{entry['subject']}: valor {value:g} acima do máximo permitido para {field}.")
+            if all(entry[field] is None for field in ('exam1','exam2','work')):continue
+        validated.append(entry)
+
+    if not validated:raise ValueError(f'Nenhuma nota válida foi encontrada para a matrícula {student_id}.')
+    return sorted(validated,key=lambda item:item['subject'])
 
 def ranking(db):
     rows = db.execute("""SELECT s.id,s.name,s.rank,s.observation,
