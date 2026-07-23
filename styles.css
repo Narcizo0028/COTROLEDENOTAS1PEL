@@ -131,3 +131,23 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .collective-table td:first-child { min-width:260px; }
 @media (max-width:900px) { .score-mode-panel { align-items:flex-start; flex-direction:column; }.score-mode-buttons { justify-content:flex-start; } }
 @media (max-width:560px) { .password-panel-head { display:grid; grid-template-columns:auto 1fr; }.student-logout-button { grid-column:1 / -1; width:100%; margin-left:0; }.score-mode-buttons,.score-mode-button { width:100%; }.collective-score-panel .panel-title { display:grid; }.collective-score-panel .panel-title > label { width:100%; } }
+
+/* Consulta das notas ao clicar no nome do discente */
+.student-name-button { padding:0; color:#574a22; background:transparent; border:0; border-bottom:1px solid currentColor; font:700 inherit; text-align:left; cursor:pointer; }
+.student-name-button:hover,.student-name-button:focus-visible { color:#000; border-color:var(--gold); }
+.student-details-dialog { width:min(1050px,calc(100% - 28px)); max-height:88vh; padding:0; color:var(--text); background:#fff; border:0; border-top:5px solid var(--gold); border-radius:var(--radius); box-shadow:0 28px 80px rgba(0,0,0,.35); }
+.student-details-dialog::backdrop { background:rgba(9,10,9,.7); backdrop-filter:blur(3px); }
+.student-details-head { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; padding:26px 28px 18px; border-bottom:1px solid var(--line); }
+.student-details-head h2 { margin:2px 0 0; font:500 clamp(1.5rem,3vw,2.25rem)/1.1 Georgia,serif; }
+.dialog-close { display:grid; place-items:center; flex:0 0 40px; width:40px; height:40px; color:#fff; background:var(--black); border:0; border-radius:50%; font-size:1.6rem; line-height:1; cursor:pointer; }
+#student-details-content { padding:4px 28px 24px; }
+.student-details-summary { display:grid; grid-template-columns:minmax(220px,1fr) repeat(3,auto); gap:12px; align-items:stretch; margin:20px 0; }
+.student-details-summary > p,.student-details-summary > div { margin:0; padding:13px 16px; background:var(--off-white); border-left:3px solid var(--gold); border-radius:5px; }
+.student-details-summary > p strong,.student-details-summary > p span,.student-details-summary > div span,.student-details-summary > div strong { display:block; }
+.student-details-summary span { color:var(--muted); font-size:.72rem; text-transform:uppercase; }
+.student-details-summary > div strong { margin-top:3px; font:700 1.2rem Georgia,serif; white-space:nowrap; }
+.student-details-table { margin-top:0; }
+.empty-student-scores { padding:28px; text-align:center; background:#f6f3e9; border:1px dashed var(--khaki); border-radius:8px; }
+.empty-student-scores p { margin:5px 0 0; color:var(--muted); }
+.student-details-actions { display:flex; justify-content:flex-end; padding:18px 28px 24px; border-top:1px solid var(--line); }
+@media (max-width:700px) { .student-details-summary { grid-template-columns:repeat(3,1fr); }.student-details-summary > p { grid-column:1 / -1; }.student-details-dialog { max-height:94vh; }.student-details-head,#student-details-content,.student-details-actions { padding-left:18px; padding-right:18px; } }

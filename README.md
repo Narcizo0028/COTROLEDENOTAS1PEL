@@ -95,6 +95,8 @@ No painel do administrador, a seção **Como deseja lançar as notas?** oferece 
 
 No boletim, o botão **Sair do boletim** encerra a sessão individual, oculta as notas e remove o código digitado. Recomenda-se sempre utilizá-lo em computadores compartilhados.
 
+No **Ranking completo do pelotão**, o administrador pode clicar no nome de qualquer discente para consultar as matérias que já possuem lançamento, as notas de cada componente, o total, a colocação e a média.
+
 ## Checklist antes de publicar
 
 - Revisar nome, e-mail e contatos institucionais em `index.html`.
