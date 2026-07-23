@@ -68,10 +68,13 @@ async function confirmPdfImport(event){
   button.disabled=true;button.textContent='Salvando...';message.textContent='Salvando notas conferidas...';
   try{
     const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'apply',student_id,entries})});
-    const success=`${result.saved} disciplina(s) atualizada(s) com sucesso.`;
+    if(!result.ok||!Array.isArray(result.confirmed)||result.confirmed.length!==result.saved)throw new Error('O servidor não confirmou a gravação das notas.');
+    const success=`${result.saved} disciplina(s) atualizada(s) e conferida(s) no banco de dados.`;
     message.textContent=success;formMessage.textContent=`Notas salvas para o discente selecionado. ${success}`;
     button.textContent='Importação concluída';pdfImportStudentId=student_id;
-    await loadData();$('#student-score-pdf').value='';$('#pdf-score-student').value=student_id;
+    $('#student-score-pdf').value='';
+    try{await loadData();$('#pdf-score-student').value=student_id}
+    catch{formMessage.textContent=`${success} A tela não conseguiu atualizar automaticamente; clique em Atualizar para conferir.`}
     $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'center'});
   }catch(error){
     const detail=error.message==='Rota inexistente.'?'O servidor ainda não possui a atualização da importação por PDF. Atualize também o backend no Render.':error.message;

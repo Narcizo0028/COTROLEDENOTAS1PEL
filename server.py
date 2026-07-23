@@ -404,7 +404,18 @@ class Handler(SimpleHTTPRequestHandler):
                         prepared.append((sid,subject_id,exam1,exam2,work,status))
                     if not prepared:raise ValueError('Preencha pelo menos uma nota antes de confirmar.')
                     db.executemany("INSERT INTO scores(student_id,subject_id,exam1,exam2,work,status) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject_id) DO UPDATE SET exam1=COALESCE(excluded.exam1,scores.exam1),exam2=COALESCE(excluded.exam2,scores.exam2),work=COALESCE(excluded.work,scores.work),status=COALESCE(excluded.status,scores.status)",prepared)
-                self.output({'ok':True,'saved':len(prepared)});return
+                    db.commit()
+                    saved_ids=[item[1] for item in prepared]
+                    placeholders=','.join('?' for _ in saved_ids)
+                    confirmed=[dict(row) for row in db.execute(
+                        f"""SELECT subject_id,exam1,exam2,work,status FROM scores
+                        WHERE student_id=? AND subject_id IN ({placeholders})
+                        ORDER BY subject_id""",
+                        (sid,*saved_ids)
+                    )]
+                    if len(confirmed)!=len(set(saved_ids)):
+                        raise sqlite3.Error('A conferência das notas gravadas não foi concluída.')
+                self.output({'ok':True,'saved':len(confirmed),'confirmed':confirmed});return
             except (ValueError,TypeError,sqlite3.Error,binascii.Error) as error:self.output({'error':str(error)},400);return
         if self.path=="/api/admin/scores/bulk":
             try:
