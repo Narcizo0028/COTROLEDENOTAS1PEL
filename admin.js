@@ -71,7 +71,6 @@ async function analyzePdfImport(event){
   }
 }
 $('#student-pdf-score-form').addEventListener('submit',analyzePdfImport);
-$('#student-pdf-analyze-button').addEventListener('click',analyzePdfImport);
 $('#pdf-score-student').addEventListener('change',()=>{pdfImportStudentId='';$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML=''});
 $('#student-score-pdf').addEventListener('change',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML=''});
 $('#student-pdf-cancel').addEventListener('click',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML='';$('#student-pdf-confirm-message').textContent=''});
