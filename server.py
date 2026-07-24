@@ -82,6 +82,10 @@ def connect():
     db.execute("PRAGMA synchronous=NORMAL")
     return db
 
+def student_entry_enabled(db):
+    row=db.execute("SELECT value FROM settings WHERE key='student_entry_enabled'").fetchone()
+    return not row or row["value"]=="1"
+
 def save_score(db, student_id, subject_id, exam1, exam2, work, status):
     """Grava o lançamento exatamente como enviado; campos vazios limpam o valor anterior."""
     if status is None and exam1 is None and exam2 is None and work is None:
@@ -224,6 +228,7 @@ def initialize():
         if "grading_mode" not in subject_columns: db.execute("ALTER TABLE subjects ADD COLUMN grading_mode TEXT NOT NULL DEFAULT 'normal'")
         score_columns = [x[1] for x in db.execute("PRAGMA table_info(scores)")]
         if "status" not in score_columns: db.execute("ALTER TABLE scores ADD COLUMN status TEXT")
+        db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled','1') ON CONFLICT(key) DO NOTHING")
         if not db.execute("SELECT 1 FROM admins WHERE username=?", (USER,)).fetchone():
             if len(INITIAL_PASSWORD) < 12:
                 raise RuntimeError("Defina EFAS_INITIAL_ADMIN_PASSWORD com pelo menos 12 caracteres antes do primeiro uso.")
@@ -468,7 +473,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/admin/data":
             if not self.require_admin():return
             with connect() as db:
-                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")]})
+                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db)})
             return
         if path=="/api/admin/report.pdf":
             if not self.require_admin():return
@@ -491,9 +496,10 @@ class Handler(SimpleHTTPRequestHandler):
                 student=db.execute("SELECT * FROM students WHERE id=?",(str(data.get("id","")),)).fetchone()
                 if not student or not verify(data.get("code",""),student["salt"],student["access_hash"]):self.output({"error":"Credenciais inválidas."},401);return
                 scores=[dict(x) for x in db.execute("SELECT sub.id subject_id,sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(student["id"],))]
-                entry_sheet=student_entry_sheet(db,student["id"])
+                entry_enabled=student_entry_enabled(db)
+                entry_sheet=student_entry_sheet(db,student["id"]) if entry_enabled else []
                 own=next((x for x in ranking(db) if x["id"]==student["id"]),None)
-            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"ranking":{k:own[k] for k in ("position","points","distributed","average")}},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
+            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"ranking":{k:own[k] for k in ("position","points","distributed","average")}},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
         if self.path=="/api/student/password":
             sid=self.student()
             if not sid:self.output({"error":"Sessão expirada. Consulte suas notas novamente."},401);return
@@ -516,6 +522,8 @@ class Handler(SimpleHTTPRequestHandler):
                 if not isinstance(entries,list) or not 1<=len(entries)<=len(STUDENT_ENTRY_SUBJECTS):
                     raise ValueError("Envie as notas das disciplinas liberadas para lançamento.")
                 with connect() as db:
+                    if not student_entry_enabled(db):
+                        raise ValueError("O lanÃ§amento de notas pelos discentes estÃ¡ indisponÃ­vel no momento.")
                     allowed={row["id"]:dict(row) for row in db.execute(
                         "SELECT id,name,exam_count,grading_mode FROM subjects WHERE name IN (%s)"
                         % (",".join("?" for _ in STUDENT_ENTRY_SUBJECTS)),
@@ -542,6 +550,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "ok":True,
                     "saved":saved,
                     "cleared":cleared,
+                    "student_entry_enabled":True,
                     "entry_sheet":sheet,
                     "scores":scores,
                     "ranking":{k:own[k] for k in ("position","points","distributed","average")} if own else None,
@@ -695,7 +704,13 @@ class Handler(SimpleHTTPRequestHandler):
             except (ValueError,TypeError,sqlite3.Error) as error:self.output({'error':str(error)},400);return
         try:
             with connect() as db:
-                if self.path=="/api/admin/password":
+                if self.path=="/api/admin/student-entry":
+                    enabled=data.get("enabled")
+                    if not isinstance(enabled,bool):raise ValueError("Informe se o lanÃ§amento deve ficar disponÃ­vel ou indisponÃ­vel.")
+                    db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
+                    db.commit()
+                    self.output({"ok":True,"student_entry_enabled":enabled});return
+                elif self.path=="/api/admin/password":
                     password=data.get("password","")
                     if len(password)<12:raise ValueError("A senha deve possuir pelo menos 12 caracteres.")
                     salt,digest=password_hash(password);db.execute("UPDATE admins SET salt=?,password_hash=?,must_change=0 WHERE username=?",(salt,digest,user))
