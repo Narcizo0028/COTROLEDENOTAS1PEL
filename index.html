@@ -6,7 +6,7 @@
   <meta name="description" content="Portal institucional para consulta de calendário de provas e notas finais do CFS — 1º Pelotão.">
   <meta name="theme-color" content="#1d1c18">
   <title>Controle de Notas | CFS — 1º Pelotão</title>
-  <link rel="stylesheet" href="styles.css?v=20260724-29">
+  <link rel="stylesheet" href="styles.css?v=20260724-30">
 </head>
 <body class="portal-app">
   <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -18,14 +18,18 @@
         <img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58">
         <span><strong>Controle de Notas</strong><small>CFS • 1º Pelotão</small></span>
       </a>
-      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="menu-principal" aria-label="Abrir menu">
-        <span></span><span></span><span></span>
-      </button>
+      <div class="header-actions">
+        <button id="student-logout-button" class="button button-dark student-logout-button" type="button" hidden>Sair</button>
+        <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="menu-principal" aria-label="Abrir menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
       <nav id="menu-principal" class="main-nav" aria-label="Navegação principal">
         <a href="#inicio" data-nav="inicio" class="active">Início</a>
         <a href="#calendario" data-nav="calendario">Calendário</a>
         <a href="#boletim" data-nav="boletim">Boletim</a>
         <a href="#lancamento" data-nav="lancamento">Lançar notas</a>
+        <a href="#senha" data-nav="senha">Alterar senha</a>
         <a href="admin.html" class="nav-admin">Administração</a>
       </nav>
     </div>
@@ -85,17 +89,43 @@
           <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
         </div>
         <div id="boletim-authed" class="grades-authed" hidden>
-          <div class="grades-authed-head">
-            <h2>Boletim</h2>
-            <button id="student-logout-button" class="button button-dark student-logout-button" type="button">Sair</button>
-          </div>
+          <h2 class="view-title">Boletim</h2>
           <div id="report-card" class="report-card" hidden aria-live="polite"></div>
-          <section id="student-password-panel" class="student-password-panel" hidden aria-labelledby="student-password-title">
-            <div class="password-panel-head">
-              <div>
-                <h3 id="student-password-title">Alterar senha</h3>
+        </div>
+      </div>
+    </section>
+
+    <section class="view grade-section" id="lancamento" data-view="lancamento" aria-labelledby="lancamento-title" hidden>
+      <div class="container">
+        <div id="lancamento-guest" class="grades-guest">
+          <h2 id="lancamento-title">Lançar notas</h2>
+          <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
+        </div>
+        <div id="lancamento-authed" class="grades-authed" hidden>
+          <h2 class="view-title">Lançar notas</h2>
+          <section id="student-entry-panel" class="student-entry-panel" hidden aria-labelledby="student-entry-title">
+            <form id="student-entry-form">
+              <div id="student-entry-table" class="student-entry-table"></div>
+              <div class="student-entry-actions">
+                <button id="student-entry-submit" class="button button-gold" type="submit">Salvar</button>
+                <p id="student-entry-message" class="form-message" role="status" aria-live="polite"></p>
               </div>
-            </div>
+            </form>
+          </section>
+          <p id="lancamento-empty" class="empty-state" hidden>Nenhuma disciplina liberada para lançamento.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="view grade-section" id="senha" data-view="senha" aria-labelledby="senha-title" hidden>
+      <div class="container">
+        <div id="senha-guest" class="grades-guest">
+          <h2 id="senha-title">Alterar senha</h2>
+          <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
+        </div>
+        <div id="senha-authed" class="grades-authed" hidden>
+          <h2 class="view-title">Alterar senha</h2>
+          <section id="student-password-panel" class="student-password-panel" aria-labelledby="student-password-title">
             <form id="student-password-form">
               <div class="password-change-grid">
                 <label for="student-new-password">Nova senha
@@ -117,35 +147,11 @@
         </div>
       </div>
     </section>
-
-    <section class="view grade-section" id="lancamento" data-view="lancamento" aria-labelledby="lancamento-title" hidden>
-      <div class="container">
-        <div id="lancamento-guest" class="grades-guest">
-          <h2 id="lancamento-title">Lançar notas</h2>
-          <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
-        </div>
-        <div id="lancamento-authed" class="grades-authed" hidden>
-          <div class="grades-authed-head">
-            <h2>Lançar notas</h2>
-          </div>
-          <section id="student-entry-panel" class="student-entry-panel" hidden aria-labelledby="student-entry-title">
-            <form id="student-entry-form">
-              <div id="student-entry-table" class="student-entry-table"></div>
-              <div class="student-entry-actions">
-                <button id="student-entry-submit" class="button button-gold" type="submit">Salvar</button>
-                <p id="student-entry-message" class="form-message" role="status" aria-live="polite"></p>
-              </div>
-            </form>
-          </section>
-          <p id="lancamento-empty" class="empty-state" hidden>Nenhuma disciplina liberada para lançamento.</p>
-        </div>
-      </div>
-    </section>
   </main>
 
   <footer class="site-footer site-footer-compact">
     <div class="container copyright">© <span id="current-year"></span> CFS — 1º Pelotão</div>
   </footer>
-  <script src="script.js?v=20260724-29" defer></script>
+  <script src="script.js?v=20260724-30" defer></script>
 </body>
 </html>

@@ -56,7 +56,19 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .site-header { position: sticky; top: 0; z-index: 50; background: rgba(255,255,255,.97); border-bottom: 1px solid var(--line); }
 .topbar { padding: 6px 20px; color: var(--khaki-light); background: var(--black); text-align: center; font-size: .76rem; letter-spacing: .12em; text-transform: uppercase; }
-.nav-wrap { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.nav-wrap { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.student-logout-button {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: .78rem;
+  white-space: nowrap;
+}
 .brand { display: inline-flex; align-items: center; gap: 12px; color: var(--black); text-decoration: none; line-height: 1.15; }
 .brand-crest { width: 52px; height: 58px; flex: 0 0 auto; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,.18)); }
 .brand strong, .brand small { display: block; }.brand strong { font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; }.brand small { margin-top: 4px; color: var(--khaki); font-size: .76rem; letter-spacing: .08em; }
@@ -90,22 +102,18 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .grade-section { color: #fff; background: linear-gradient(135deg, var(--black-soft), #263337); padding: 40px 0 56px; }.grade-grid { display: grid; grid-template-columns: 1fr .85fr; gap: 90px; align-items: center; }.grade-section h2 { color: #fff; margin: 0 0 10px; font: 500 clamp(1.85rem, 3.5vw, 2.6rem)/1.12 Georgia, serif; }.grade-intro > p:not(.eyebrow) { max-width: 520px; color: #cfccc0; }.check-list { padding: 0; margin: 26px 0 0; list-style: none; }.check-list li { margin: 10px 0; }.check-list li::before { content: "\2713"; margin-right: 10px; color: var(--gold-light); font-weight: 800; }
 .grades-guest { max-width: 520px; padding: 8px 0 24px; display: grid; gap: 18px; justify-items: start; }
-.grades-authed-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 8px;
+.view-title {
+  margin: 0 0 18px;
+  color: #fff;
+  font: 500 clamp(1.85rem, 3.5vw, 2.4rem)/1.12 Georgia, serif;
 }
-.grades-authed-head h2 { margin: 0; }
-.grades-authed-head .student-logout-button {
-  flex: 0 0 auto;
-  margin: 0;
-}
+#calendario .view-title,
+.section .view-title { color: var(--black); }
 .report-card { margin-top: 18px; }
 .report-cards-mobile, .entry-cards-mobile { display: none; }
 .report-table-desktop, .entry-table-desktop { display: block; }
 #lancamento-empty { margin-top: 12px; color: var(--text); background: #fff; }
+#senha .student-password-panel { margin-top: 0; }
 .form-card { padding: 32px; color: var(--text); background: #fff; border-top: 4px solid var(--gold); border-radius: var(--radius); box-shadow: 0 20px 50px rgba(0,0,0,.2); }.form-card label { display: block; margin: 0 0 6px; font-size: .82rem; font-weight: 750; }.form-card input { width: 100%; height: 49px; margin-bottom: 18px; padding: 0 13px; border: 1px solid #bdb9ad; border-radius: 6px; }.form-card input:focus { border-color: #8b712d; }.password-wrap { position: relative; }.password-wrap input { padding-right: 78px; }.password-wrap button { position: absolute; top: 8px; right: 8px; padding: 6px 8px; color: #675721; background: #f0ead6; border: 0; border-radius: 4px; cursor: pointer; font-size: .76rem; font-weight: 700; }.form-message { min-height: 1.4em; margin: -8px 0 10px; color: var(--danger); font-size: .82rem; }.demo-tip { margin: 12px 0 0; color: var(--muted); font-size: .75rem; text-align: center; }
 .report-card { margin-top: 45px; padding: 30px; color: var(--text); background: #fff; border-radius: var(--radius); }.report-header { display: flex; justify-content: space-between; gap: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }.report-header h3 { margin: 0; font: 500 1.7rem Georgia, serif; }.report-header p { margin: 3px 0 0; color: var(--muted); }.average { text-align: right; }.average strong { display: block; color: var(--success); font: 700 2rem Georgia, serif; }.table-wrap { overflow-x: auto; }.grade-table { width: 100%; margin-top: 18px; border-collapse: collapse; }.grade-table th, .grade-table td { padding: 13px 10px; border-bottom: 1px solid var(--line); text-align: left; }.grade-table th { color: var(--muted); font-size: .73rem; text-transform: uppercase; letter-spacing: .08em; }.result-approved { color: var(--success); font-weight: 800; }
 .admin-section { background: #e8e6dd; padding: 48px 0; }.admin-card { display: grid; grid-template-columns: 1fr auto; gap: 30px; align-items: center; padding: 36px; background: var(--ivory); border: 1px solid var(--khaki-light); border-top: 4px solid var(--blue-gray); border-radius: var(--radius); }.admin-card p { max-width: 700px; margin-bottom: 0; }.admin-message { grid-column: 1 / -1; padding: 12px; color: #574a22; background: #f7f2e1; border-left: 3px solid var(--gold); }
@@ -357,12 +365,11 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .report-cards-mobile,
   .entry-cards-mobile { display: grid; gap: 0; }
   .grades-guest .button { width: 100%; }
+  .student-logout-button { padding: 8px 12px; font-size: .74rem; }
   .home-login-card input { min-height: 52px; font-size: 1rem; }
   .home-login-card .button { min-height: 52px; }
   .grade-section { padding: 32px 0 44px; }
   .admin-section { padding: 36px 0; }
-  .grades-authed-head { flex-direction: column; align-items: stretch; }
-  .grades-authed-head .student-logout-button { width: 100%; }
 }
 
 /* Navegação lateral e formulários otimizados para celular. */
@@ -433,6 +440,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .main-nav a[href="#calendario"]::before { content: "▦"; }
   .main-nav a[href="#boletim"]::before { content: "✓"; }
   .main-nav a[href="#lancamento"]::before { content: "✎"; }
+  .main-nav a[href="#senha"]::before { content: "🔒"; }
   .main-nav a[href="admin.html"]::before,
   .main-nav .nav-admin::before { content: "⚙"; }
   .main-nav a::after {

@@ -1,6 +1,6 @@
 let exams=[];
 let studentSession=null;
-const VIEW_IDS=new Set(['inicio','calendario','boletim','lancamento']);
+const VIEW_IDS=new Set(['inicio','calendario','boletim','lancamento','senha']);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const menuButton=document.querySelector('.menu-toggle');
@@ -25,6 +25,7 @@ const gradesAutheds=[...document.querySelectorAll('.grades-authed')];
 const lancamentoEmpty=document.querySelector('#lancamento-empty');
 const homeLoginPanel=document.querySelector('#home-login-panel');
 const homeSessionPanel=document.querySelector('#home-session-panel');
+const studentLogoutButton=document.querySelector('#student-logout-button');
 const views=[...document.querySelectorAll('[data-view]')];
 
 function closeMenu(){
@@ -60,11 +61,15 @@ function syncStudentUi(){
   gradesAutheds.forEach(el=>{el.hidden=!loggedIn;});
   if(homeLoginPanel)homeLoginPanel.hidden=loggedIn;
   if(homeSessionPanel)homeSessionPanel.hidden=!loggedIn;
+  if(studentLogoutButton)studentLogoutButton.hidden=!loggedIn;
+  document.body.classList.toggle('student-logged-in',loggedIn);
   if(lancamentoEmpty&&studentEntryPanel){
     const hasSheet=loggedIn&&!studentEntryPanel.hidden;
     lancamentoEmpty.hidden=hasSheet||!loggedIn;
   }
 }
+
+const STUDENT_VIEWS=new Set(['boletim','lancamento','senha']);
 
 function showView(id,{updateHash=true}={}){
   const viewId=VIEW_IDS.has(id)?id:'inicio';
@@ -76,7 +81,7 @@ function showView(id,{updateHash=true}={}){
   menu.querySelectorAll('[data-nav]').forEach(link=>{
     link.classList.toggle('active',link.dataset.nav===viewId);
   });
-  if(viewId==='boletim'||viewId==='lancamento')syncStudentUi();
+  if(STUDENT_VIEWS.has(viewId))syncStudentUi();
   closeMenu();
   window.scrollTo({top:0,behavior:'auto'});
   if(updateHash){
@@ -160,7 +165,6 @@ showPasswords.addEventListener('change',()=>{
   const type=showPasswords.checked?'text':'password';
   newPassword.type=confirmPassword.type=type;
 });
-new MutationObserver(()=>{studentPasswordPanel.hidden=reportCard.hidden;}).observe(reportCard,{attributes:true,attributeFilter:['hidden']});
 
 studentPasswordForm.addEventListener('submit',async e=>{
   e.preventDefault();
@@ -347,7 +351,6 @@ function clearStudentSessionUi(messageText=''){
   studentEntryPanel.hidden=true;
   studentEntryTable.innerHTML='';
   studentEntryMessage.textContent='';
-  studentPasswordPanel.hidden=true;
   studentPasswordForm.reset();
   updatePasswordMatch();
   document.querySelector('#access-code').value='';
@@ -355,7 +358,6 @@ function clearStudentSessionUi(messageText=''){
   syncStudentUi();
 }
 
-const studentLogoutButton=document.querySelector('#student-logout-button');
 studentLogoutButton.addEventListener('click',async()=>{
   try{
     await fetch('/api/student/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
@@ -427,7 +429,7 @@ document.querySelector('#grade-form').addEventListener('submit',async e=>{
     renderEntrySheet(student.entry_sheet||[]);
     studentEntryMessage.textContent='';
     syncStudentUi();
-    showView('boletim');
+    showView(student.must_change_password?'senha':'boletim');
   }catch{
     message.textContent='Matrícula ou código de acesso inválido.';
     clearStudentSessionUi('Matrícula ou código de acesso inválido.');
