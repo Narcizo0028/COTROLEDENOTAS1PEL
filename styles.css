@@ -275,6 +275,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   min-height: 0;
 }
 .student-entry-actions .form-message.is-error { color: var(--danger); }
+.panel-message.is-error { color: var(--danger); }
 @media (max-width: 720px) {
   .student-entry-head { flex-direction: column; align-items: stretch; }
   .student-entry-hint { max-width: none; }
