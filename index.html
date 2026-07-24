@@ -6,13 +6,13 @@
   <meta name="description" content="Portal institucional para consulta de calendário de provas e notas finais do CFS — 1º Pelotão.">
   <meta name="theme-color" content="#1d1c18">
   <title>Controle de Notas | CFS — 1º Pelotão</title>
-  <link rel="stylesheet" href="styles.css?v=20260724-27">
+  <link rel="stylesheet" href="styles.css?v=20260724-28">
 </head>
 <body class="portal-app">
   <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
 
   <header class="site-header" id="topo">
-    <div class="topbar">Portal acadêmico oficial • CFS / 1º Pelotão</div>
+    <div class="topbar">CFS / 1º Pelotão</div>
     <div class="nav-wrap container">
       <a class="brand" href="#inicio" data-nav="inicio" aria-label="Página inicial do CFS, 1º Pelotão">
         <img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58">
@@ -23,9 +23,9 @@
       </button>
       <nav id="menu-principal" class="main-nav" aria-label="Navegação principal">
         <a href="#inicio" data-nav="inicio" class="active">Início</a>
-        <a href="#calendario" data-nav="calendario">Calendário de provas</a>
+        <a href="#calendario" data-nav="calendario">Calendário</a>
         <a href="#notas" data-nav="notas">Minhas notas</a>
-        <a href="#administracao" data-nav="administracao" class="nav-admin">Administração</a>
+        <a href="admin.html" class="nav-admin">Administração</a>
       </nav>
     </div>
   </header>
@@ -37,129 +37,90 @@
         <div class="hero-pattern" aria-hidden="true"></div>
         <div class="container home-grid">
           <div class="hero-copy">
-            <p class="eyebrow">Ensino • Disciplina • Excelência</p>
             <h1 id="hero-title">Controle de Notas</h1>
-            <p class="hero-text">Consulte o calendário e acompanhe seu desempenho no CFS — 1º Pelotão.</p>
-            <ul class="home-highlights" aria-label="Benefícios do portal">
-              <li>Consulta individual e privada</li>
-              <li>Agenda de provas centralizada</li>
-              <li>Lançamento das suas notas</li>
-            </ul>
+            <p class="hero-text">CFS — 1º Pelotão</p>
           </div>
           <div class="form-card home-login-card">
             <div id="home-login-panel">
-              <p class="eyebrow dark">Acesso do discente</p>
-              <h2 class="login-card-title">Entrar na área do aluno</h2>
+              <h2 class="login-card-title">Entrar</h2>
               <form id="grade-form" novalidate>
                 <label for="student-id">Matrícula</label>
                 <input id="student-id" name="student-id" inputmode="numeric" autocomplete="username" placeholder="Ex.: 2026001" required>
                 <label for="access-code">Código de acesso</label>
                 <div class="password-wrap">
-                  <input id="access-code" name="access-code" type="password" autocomplete="current-password" placeholder="Informe seu código" required>
+                  <input id="access-code" name="access-code" type="password" autocomplete="current-password" placeholder="Seu código" required>
                   <button id="toggle-password" type="button" aria-label="Mostrar código de acesso">Mostrar</button>
                 </div>
                 <p id="form-message" class="form-message" role="alert"></p>
                 <button class="button button-gold full" type="submit">Entrar</button>
-                <p class="demo-tip">Utilize a matrícula e o código individual fornecidos pela administração.</p>
               </form>
             </div>
             <div id="home-session-panel" hidden>
-              <p class="eyebrow dark">Sessão ativa</p>
-              <h2 class="login-card-title">Você já entrou</h2>
-              <p class="home-session-text">Abra sua área do aluno para consultar o boletim e lançar notas.</p>
-              <a class="button button-gold full" href="#notas" data-nav="notas">Ir para minhas notas</a>
+              <h2 class="login-card-title">Sessão ativa</h2>
+              <a class="button button-gold full" href="#notas" data-nav="notas">Minhas notas</a>
             </div>
           </div>
         </div>
         <img class="hero-crest" src="assets/escudo-efas.png" alt="" aria-hidden="true">
-      </div>
-      <div class="container home-meta">
-        <aside class="status-card home-status" aria-label="Informações do período letivo">
-          <span class="status-dot">Sistema disponível</span>
-          <p>Período letivo</p>
-          <strong>2026 • Turma CFS</strong>
-          <div class="status-line"></div>
-          <small>Dados atualizados pelo administrador do 1º Pelotão.</small>
-        </aside>
       </div>
     </section>
 
     <section class="view section" id="calendario" data-view="calendario" aria-labelledby="calendar-title" hidden>
       <div class="container">
         <div class="section-heading">
-          <div>
-            <p class="eyebrow dark">Planejamento acadêmico</p>
-            <h2 id="calendar-title">Calendário de provas</h2>
-          </div>
-          <label class="filter-label">Filtrar por disciplina
-            <select id="discipline-filter"><option value="todas">Todas as disciplinas</option></select>
+          <h2 id="calendar-title">Calendário</h2>
+          <label class="filter-label">Disciplina
+            <select id="discipline-filter"><option value="todas">Todas</option></select>
           </label>
         </div>
         <div id="exam-list" class="exam-list" aria-live="polite"></div>
-        <p class="section-note"><strong>Calendário oficial atualizado em 20/07/2026.</strong> Educação Física Militar: 1º TAF nos tempos 39 a 42, 2º TAF nos tempos 57 a 60 e 3º TAF nos tempos 75 a 78; as datas serão informadas pela coordenação de cada turma. As demais datas podem sofrer alterações.</p>
       </div>
     </section>
 
     <section class="view grade-section" id="notas" data-view="notas" aria-labelledby="grades-title" hidden>
       <div class="container">
         <div id="grades-guest" class="grades-guest">
-          <p class="eyebrow">Área do aluno</p>
           <h2 id="grades-title">Minhas notas</h2>
-          <p>Entre com sua matrícula e código de acesso para consultar o boletim e lançar notas.</p>
-          <a class="button button-gold" href="#inicio" data-nav="inicio">Ir para o login</a>
+          <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
         </div>
         <div id="grades-authed" class="grades-authed" hidden>
           <div class="grades-authed-head">
-            <div>
-              <p class="eyebrow">Área do aluno</p>
-              <h2>Boletim e lançamento</h2>
-              <p>Consulta privada do seu desempenho e lançamento nas disciplinas liberadas.</p>
-            </div>
+            <h2>Minhas notas</h2>
             <button id="student-logout-button" class="button button-dark student-logout-button" type="button">Sair</button>
           </div>
           <div id="report-card" class="report-card" hidden aria-live="polite"></div>
           <section id="student-entry-panel" class="student-entry-panel" hidden aria-labelledby="student-entry-title">
             <div class="student-entry-head">
-              <div>
-                <p class="eyebrow dark">Lançamento próprio</p>
-                <h3 id="student-entry-title">Inserir minhas notas</h3>
-                <p>Preencha Prova 1, Prova 2 e Trabalho nas disciplinas liberadas. No TAF use TAF 1, TAF 2 e TAF 3.</p>
-              </div>
-              <p class="student-entry-hint">Campos vazios preservam as notas já lançadas.</p>
+              <h3 id="student-entry-title">Lançar notas</h3>
             </div>
             <form id="student-entry-form">
               <div id="student-entry-table" class="student-entry-table"></div>
               <div class="student-entry-actions">
-                <button id="student-entry-submit" class="button button-gold" type="submit">Salvar minhas notas</button>
+                <button id="student-entry-submit" class="button button-gold" type="submit">Salvar</button>
                 <p id="student-entry-message" class="form-message" role="status" aria-live="polite"></p>
               </div>
             </form>
           </section>
           <section id="student-password-panel" class="student-password-panel" hidden aria-labelledby="student-password-title">
             <div class="password-panel-head">
-              <div class="security-mark" aria-hidden="true">✓</div>
               <div>
-                <span class="security-label">Área segura</span>
-                <h3 id="student-password-title">Alterar senha de acesso</h3>
-                <p>No primeiro acesso, substitua a senha temporária. A nova senha deve possuir pelo menos 8 caracteres.</p>
+                <h3 id="student-password-title">Alterar senha</h3>
               </div>
             </div>
             <form id="student-password-form">
               <div class="password-change-grid">
                 <label for="student-new-password">Nova senha
                   <input id="student-new-password" name="password" type="password" minlength="8" autocomplete="new-password" required>
-                  <small>Mínimo de 8 caracteres</small>
+                  <small>Mínimo 8 caracteres</small>
                 </label>
-                <label for="student-confirm-password">Confirmar nova senha
+                <label for="student-confirm-password">Confirmar
                   <input id="student-confirm-password" name="confirmation" type="password" minlength="8" autocomplete="new-password" aria-describedby="password-match-indicator" required>
-                  <small>Digite novamente a mesma senha</small>
                 </label>
               </div>
-              <p id="password-match-indicator" class="password-match" data-state="empty" role="status" aria-live="polite"><span aria-hidden="true">•</span> Aguardando a confirmação da senha.</p>
-              <label class="show-passwords"><input id="show-student-passwords" type="checkbox"> Mostrar as senhas digitadas</label>
+              <p id="password-match-indicator" class="password-match" data-state="empty" role="status" aria-live="polite"><span aria-hidden="true">•</span> Confirme a senha.</p>
+              <label class="show-passwords"><input id="show-student-passwords" type="checkbox"> Mostrar senhas</label>
               <div class="password-panel-actions">
-                <button id="student-password-submit" class="button button-gold" type="submit" disabled>Salvar nova senha</button>
-                <span class="security-note">Sua senha não é exibida para outros usuários.</span>
+                <button id="student-password-submit" class="button button-gold" type="submit" disabled>Salvar senha</button>
               </div>
               <p class="form-message" role="status" aria-live="polite"></p>
             </form>
@@ -167,36 +128,11 @@
         </div>
       </div>
     </section>
-
-    <section class="view admin-section" id="administracao" data-view="administracao" aria-labelledby="admin-title" hidden>
-      <div class="container admin-card">
-        <div>
-          <p class="eyebrow dark">Área restrita</p>
-          <h2 id="admin-title">Administração</h2>
-          <p>O cadastro e a atualização de dados devem ser realizados em um painel protegido, conectado ao banco de dados institucional.</p>
-        </div>
-        <a class="button button-dark" href="admin.html">Acesso do administrador</a>
-      </div>
-    </section>
   </main>
 
-  <footer class="site-footer">
-    <div class="container footer-grid">
-      <div class="brand footer-brand">
-        <img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58">
-        <span><strong>CFS • 1º Pelotão</strong><small>Controle de Notas</small></span>
-      </div>
-      <div>
-        <strong>Contato institucional</strong>
-        <p>Secretaria do 1º Pelotão<br><a href="mailto:contato@instituicao.mil.br">contato@instituicao.mil.br</a></p>
-      </div>
-      <div>
-        <strong>Acesso rápido</strong>
-        <p><a href="#calendario" data-nav="calendario">Calendário</a><br><a href="#inicio" data-nav="inicio">Entrar</a></p>
-      </div>
-    </div>
-    <div class="container copyright">© <span id="current-year"></span> CFS — 1º Pelotão. Uso institucional.</div>
+  <footer class="site-footer site-footer-compact">
+    <div class="container copyright">© <span id="current-year"></span> CFS — 1º Pelotão</div>
   </footer>
-  <script src="script.js?v=20260724-27" defer></script>
+  <script src="script.js?v=20260724-28" defer></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 let exams=[];
 let studentSession=null;
-const VIEW_IDS=new Set(['inicio','calendario','notas','administracao']);
+const VIEW_IDS=new Set(['inicio','calendario','notas']);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const menuButton=document.querySelector('.menu-toggle');
@@ -86,10 +86,15 @@ function viewFromHash(){
 }
 
 document.addEventListener('click',e=>{
-  const link=e.target.closest('[data-nav]');
+  const link=e.target.closest('a');
   if(!link)return;
+  // Administração e links externos: fecha o menu e deixa o navegador seguir.
+  if(link.classList.contains('nav-admin')||link.getAttribute('href')==='admin.html'){
+    closeMenu();
+    return;
+  }
   const id=link.dataset.nav;
-  if(!VIEW_IDS.has(id))return;
+  if(!id||!VIEW_IDS.has(id))return;
   e.preventDefault();
   showView(id);
 });
@@ -112,7 +117,7 @@ function renderExams(subject='todas'){
 async function loadExams(){
   try{
     exams=await(await fetch('/api/exams')).json();
-    filter.innerHTML='<option value="todas">Todas as disciplinas</option>';
+    filter.innerHTML='<option value="todas">Todas</option>';
     [...new Set(exams.map(x=>x.subject))].sort().forEach(s=>{
       const o=document.createElement('option');
       o.value=o.textContent=s;
@@ -135,10 +140,10 @@ document.querySelector('#toggle-password').addEventListener('click',e=>{
 
 function updatePasswordMatch(){
   const password=newPassword.value,confirmation=confirmPassword.value;
-  let state='empty',text='Aguardando a confirmação da senha.',symbol='•';
-  if(password&&password.length<8){state='different';text='A nova senha precisa ter pelo menos 8 caracteres.';symbol='!';}
-  else if(confirmation&&password===confirmation){state='identical';text='As senhas estão idênticas.';symbol='✓';}
-  else if(confirmation){state='different';text='As senhas estão diferentes.';symbol='×';}
+  let state='empty',text='Confirme a senha.',symbol='•';
+  if(password&&password.length<8){state='different';text='Mínimo de 8 caracteres.';symbol='!';}
+  else if(confirmation&&password===confirmation){state='identical';text='Senhas iguais.';symbol='✓';}
+  else if(confirmation){state='different';text='Senhas diferentes.';symbol='×';}
   matchIndicator.dataset.state=state;
   matchIndicator.innerHTML=`<span aria-hidden="true">${symbol}</span> ${text}`;
   passwordSubmit.disabled=state!=='identical';
@@ -383,7 +388,7 @@ studentEntryForm.addEventListener('submit',async e=>{
     }
     renderEntrySheet(data.entry_sheet);
     studentEntryMessage.classList.remove('is-error');
-    studentEntryMessage.textContent=`Notas salvas e confirmadas no banco de dados (${data.saved} disciplina(s)).`;
+    studentEntryMessage.textContent=`Salvo (${data.saved} disciplina(s)).`;
   }catch(error){
     studentEntryMessage.classList.add('is-error');
     studentEntryMessage.textContent=error.message;
