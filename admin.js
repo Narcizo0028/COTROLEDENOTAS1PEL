@@ -38,12 +38,20 @@ $('#ranking-data').innerHTML=data.ranking.length?`<div class="table-wrap"><table
 $('#scores-data').innerHTML=data.scores.length?`<div class="table-wrap"><table class="grade-table"><thead><tr><th>Discente</th><th>Disciplina</th><th>Avaliação Complementar (AVC)</th><th>Avaliação Final (AVF)</th><th>Trabalho / 3º TAF</th><th>Total ou resultado</th></tr></thead><tbody>${data.scores.map(x=>`<tr><td>${esc(x.student_id)}</td><td>${esc(x.subject)}</td><td>${x.grading_mode==='apt'?'—':x.exam1==null?'—':fmt(x.exam1)}</td><td>${x.grading_mode==='apt'?'—':x.exam2==null?'—':fmt(x.exam2)}</td><td>${x.grading_mode==='apt'?'—':x.work==null?'—':fmt(x.work)}</td><td><strong>${x.grading_mode==='apt'?esc(x.status||'—'):fmt((x.exam1||0)+(x.exam2||0)+(x.work||0))}</strong></td></tr>`).join('')}</tbody></table></div>`:'<p>Nenhum resultado lançado.</p>'}
 $('#refresh-button').addEventListener('click',async event=>{
   const button=event.currentTarget,message=$('#refresh-ranking-message');
+  let timeoutId;
+  const timeoutRequest=new Promise((resolve,reject)=>{
+    timeoutId=window.setTimeout(()=>{
+      const error=new Error('O servidor demorou mais de 15 segundos para responder.');
+      error.name='TimeoutError';
+      reject(error);
+    },15000);
+  });
   button.disabled=true;
   button.textContent='Atualizando...';
   message.classList.remove('is-error');
   message.textContent='Buscando as notas e recalculando o ranking...';
   try{
-    await loadData();
+    await Promise.race([loadData(),timeoutRequest]);
     button.textContent='Atualizado';
     message.textContent='Ranking atualizado com sucesso.';
     window.setTimeout(()=>{
@@ -52,8 +60,11 @@ $('#refresh-button').addEventListener('click',async event=>{
   }catch(error){
     button.textContent='Tentar novamente';
     message.classList.add('is-error');
-    message.textContent=`Erro ao atualizar o ranking: ${error.message}`;
+    message.textContent=error.name==='TimeoutError'
+      ?'Erro ao atualizar o ranking: o servidor demorou mais de 15 segundos para responder. Tente novamente.'
+      :`Erro ao atualizar o ranking: ${error.message}`;
   }finally{
+    window.clearTimeout(timeoutId);
     button.disabled=false;
   }
 });$('#logout-button').addEventListener('click',async()=>{await api('/api/admin/logout',{method:'POST',body:'{}'});location.reload()});check();
