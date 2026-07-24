@@ -1,134 +1,309 @@
-# Controle de Notas — CFS / 1º Pelotão
+let exams=[];
+let studentSession=null;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const menuButton=document.querySelector('.menu-toggle');
+const menu=document.querySelector('.main-nav');
+const examList=document.querySelector('#exam-list');
+const filter=document.querySelector('#discipline-filter');
+const reportCard=document.querySelector('#report-card');
+const studentEntryPanel=document.querySelector('#student-entry-panel');
+const studentEntryForm=document.querySelector('#student-entry-form');
+const studentEntryTable=document.querySelector('#student-entry-table');
+const studentEntryMessage=document.querySelector('#student-entry-message');
+const studentPasswordPanel=document.querySelector('#student-password-panel');
+const studentPasswordForm=document.querySelector('#student-password-form');
+const newPassword=document.querySelector('#student-new-password');
+const confirmPassword=document.querySelector('#student-confirm-password');
+const matchIndicator=document.querySelector('#password-match-indicator');
+const passwordSubmit=document.querySelector('#student-password-submit');
+const showPasswords=document.querySelector('#show-student-passwords');
 
-Portal institucional responsivo da EFAS para calendário, consulta individual de notas e administração restrita. A interface usa HTML5, CSS3 e JavaScript puro; o backend usa apenas a biblioteca padrão do Python e SQLite.
+menuButton.addEventListener('click',()=>{
+  const open=menu.classList.toggle('open');
+  menuButton.setAttribute('aria-expanded',String(open));
+  menuButton.setAttribute('aria-label',open?'Fechar menu':'Abrir menu');
+});
+menu.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{
+  menu.classList.remove('open');
+  menuButton.setAttribute('aria-expanded','false');
+}));
 
-## Estrutura do projeto
-
-- `index.html`, `styles.css` e `script.js`: portal dos discentes.
-- `admin.html` e `admin.js`: painel administrativo.
-- `server.py`: servidor, autenticação, API e regras de negócio.
-- `assets/escudo-efas.png`: escudo institucional usado no cabeçalho, destaque e rodapé.
-- `data/notas.db`: banco local criado na primeira execução. Este arquivo é confidencial e está excluído do Git.
-- `.env.example`: modelo das configurações exigidas no servidor.
-
-## Execução local
-
-Requer Python 3.10 ou superior. Na primeira execução, defina uma senha administrativa temporária com pelo menos 12 caracteres.
-
-### Windows PowerShell
-
-```powershell
-$env:EFAS_INITIAL_ADMIN_PASSWORD="defina-uma-senha-forte"
-python server.py
-```
-
-Abra `http://127.0.0.1:4174/`. O usuário inicial é `administrador`. O sistema exigirá a troca da senha no primeiro acesso.
-
-Nas execuções seguintes, o banco já contém o administrador e a variável da senha inicial não é necessária.
-
-## Regras acadêmicas
-
-- Disciplinas com uma avaliação: AVF de 7 pontos e trabalho de 3 pontos; o campo AVC permanece bloqueado.
-- Disciplinas com duas avaliações: AVC de 3 pontos, AVF de 4 pontos e trabalho de 3 pontos.
-- Saúde Integral, Armamento e Tiro Policial e APMI: resultado `Apto` ou `Inapto`, fora da pontuação numérica do ranking.
-- Educação Física Militar: 1º TAF de 3 pontos, 2º TAF de 3 pontos e 3º TAF de 4 pontos.
-
-O ranking completo é exclusivo do administrador. Cada discente recebe somente sua própria colocação, notas e observação individual.
-
-Após consultar o boletim pela primeira vez, o discente pode substituir a senha temporária fornecida pela administração. A troca exige uma sessão autenticada, confirmação da nova senha e no mínimo 8 caracteres. A opção permanece disponível no boletim para mudanças futuras; as senhas continuam armazenadas somente como hash PBKDF2 com salt.
-
-O painel administrativo também permite gerar um relatório PDF protegido com os nomes dos discentes, matrículas, disciplinas, componentes lançados, totais, data de geração e paginação. O arquivo é destinado à conferência posterior e só pode ser baixado durante uma sessão administrativa válida.
-
-O calendário pode ser atualizado pelo administrador por meio da importação do PDF oficial da EFAS. O sistema aceita arquivos de até 5 MB, valida o conteúdo, identifica disciplinas, datas, horários, duração e marcações V.F/V.C e somente então substitui o calendário. Arquivos inválidos ou parcialmente reconhecidos são recusados sem modificar os dados existentes.
-
-## Controle de versão
-
-O repositório mantém somente código e arquivos públicos. Banco de dados, senhas, logs e arquivos temporários são ignorados pelo `.gitignore`.
-
-Fluxo recomendado para registrar uma versão revisada:
-
-```powershell
-git status
-git add .
-git diff --cached
-git commit -m "Prepara portal EFAS para publicação"
-```
-
-Antes de enviar para um repositório remoto, confirme que `data/notas.db` e `.env` não aparecem em `git status`.
-
-## Procedimento de publicação
-
-Este projeto possui autenticação e banco SQLite; por isso, **não deve ser publicado apenas como site estático** no GitHub Pages. Use um servidor Python persistente (servidor institucional, VPS ou plataforma que preserve o disco) atrás de HTTPS.
-
-1. Faça uma cópia de segurança do banco `data/notas.db` em local protegido.
-2. Envie ao servidor apenas os arquivos versionados do repositório.
-3. Instale Python 3.10 ou superior.
-4. Configure as variáveis de ambiente, usando `.env.example` como referência:
-   - `EFAS_HOST=0.0.0.0`
-   - `EFAS_PORT=4174`
-   - `EFAS_ADMIN_USER=administrador`
-   - `EFAS_INITIAL_ADMIN_PASSWORD`: senha temporária forte, necessária somente ao criar um banco novo.
-   - `EFAS_COOKIE_SECURE=1`: obrigatório quando o endereço público usa HTTPS.
-5. Inicie `python server.py` por um gerenciador de serviços do sistema para reinício automático.
-6. Coloque Nginx, Apache ou o proxy institucional à frente da porta 4174, com certificado HTTPS válido. Não exponha a porta diretamente à internet.
-7. Acesse o painel, altere a senha temporária e teste uma consulta de discente.
-8. Configure backup criptografado e periódico de `data/notas.db`, com acesso restrito.
-
-Exemplo mínimo de proxy Nginx:
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:4174;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Real-IP $remote_addr;
+function dateParts(iso){
+  const d=new Date(`${iso}T12:00:00`);
+  return{day:String(d.getDate()).padStart(2,'0'),month:d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','')};
 }
-```
 
-## Formas de lançamento de notas
+function renderExams(subject='todas'){
+  const items=subject==='todas'?exams:exams.filter(x=>x.subject===subject);
+  examList.innerHTML=items.length?items.map(x=>{
+    const d=dateParts(x.date);
+    return`<article class="exam-card"><div class="exam-date"><strong>${d.day}</strong><span>${d.month}</span></div><div class="exam-details"><h3>${esc(x.subject)}</h3><p>${esc(x.time)} • ${esc(x.place)}</p></div><span class="exam-type">${esc(x.type)}</span></article>`;
+  }).join(''):'<p class="empty-state">Nenhuma prova cadastrada.</p>';
+}
 
-No painel do administrador, a seção **Como deseja lançar as notas?** oferece três modos:
+async function loadExams(){
+  try{
+    exams=await(await fetch('/api/exams')).json();
+    filter.innerHTML='<option value="todas">Todas as disciplinas</option>';
+    [...new Set(exams.map(x=>x.subject))].sort().forEach(s=>{
+      const o=document.createElement('option');
+      o.value=o.textContent=s;
+      filter.append(o);
+    });
+    renderExams();
+  }catch{
+    examList.innerHTML='<p class="empty-state">Inicie o servidor para carregar o calendário.</p>';
+  }
+}
+filter.addEventListener('change',e=>renderExams(e.target.value));
+loadExams();
 
-- **Por matéria individual:** mantém a disciplina selecionada depois de salvar, facilitando o lançamento para o próximo discente.
-- **Por discente:** mantém o discente selecionado depois de salvar, facilitando o preenchimento das demais disciplinas.
-- **Coletivo por matéria:** exibe todos os discentes em uma tabela e salva os resultados preenchidos de uma só vez.
+document.querySelector('#toggle-password').addEventListener('click',e=>{
+  const input=document.querySelector('#access-code');
+  const show=input.type==='password';
+  input.type=show?'text':'password';
+  e.currentTarget.textContent=show?'Ocultar':'Mostrar';
+});
 
-Os lançamentos são incrementais: campos deixados em branco preservam as notas já cadastradas. Ao selecionar novamente o mesmo discente e a mesma disciplina, os valores existentes são carregados para conferência e somente os componentes efetivamente alterados são atualizados.
+function updatePasswordMatch(){
+  const password=newPassword.value,confirmation=confirmPassword.value;
+  let state='empty',text='Aguardando a confirmação da senha.',symbol='•';
+  if(password&&password.length<8){state='different';text='A nova senha precisa ter pelo menos 8 caracteres.';symbol='!';}
+  else if(confirmation&&password===confirmation){state='identical';text='As senhas estão idênticas.';symbol='✓';}
+  else if(confirmation){state='different';text='As senhas estão diferentes.';symbol='×';}
+  matchIndicator.dataset.state=state;
+  matchIndicator.innerHTML=`<span aria-hidden="true">${symbol}</span> ${text}`;
+  passwordSubmit.disabled=state!=='identical';
+}
+newPassword.addEventListener('input',updatePasswordMatch);
+confirmPassword.addEventListener('input',updatePasswordMatch);
+showPasswords.addEventListener('change',()=>{
+  const type=showPasswords.checked?'text':'password';
+  newPassword.type=confirmPassword.type=type;
+});
+new MutationObserver(()=>{studentPasswordPanel.hidden=reportCard.hidden;}).observe(reportCard,{attributes:true,attributeFilter:['hidden']});
 
-### Importar notas de um discente por PDF
+studentPasswordForm.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const message=studentPasswordForm.querySelector('.form-message');
+  const password=newPassword.value,confirmation=confirmPassword.value;
+  if(password!==confirmation){updatePasswordMatch();return;}
+  try{
+    const response=await fetch('/api/student/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password,confirmation})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'Não foi possível alterar a senha.');
+    message.textContent='Senha alterada com sucesso.';
+    studentPasswordForm.reset();
+    showPasswords.checked=false;
+    newPassword.type=confirmPassword.type='password';
+    updatePasswordMatch();
+  }catch(error){
+    message.textContent=error.message;
+  }
+});
 
-Na seção **Anexar notas de um discente por PDF**:
+function renderReport(student){
+  const r=student.ranking;
+  reportCard.innerHTML=`
+    <div class="report-header">
+      <div>
+        <h3>${esc(student.name)}</h3>
+        <p>${esc(student.rank)} • Matrícula ${esc(student.id)}</p>
+      </div>
+      <div class="ranking-summary">
+        <div><span>Colocação</span><strong>${r.position}º</strong></div>
+        <div><span>Pontos</span><strong>${fmt(r.points)} / ${fmt(r.distributed)}</strong></div>
+        <div><span>Média</span><strong>${fmt(r.average)}</strong></div>
+      </div>
+    </div>
+    ${student.observation?`<div class="student-observation"><strong>Observação da administração</strong><p>${esc(student.observation)}</p></div>`:''}
+    <div class="table-wrap">
+      <table class="grade-table">
+        <thead>
+          <tr>
+            <th>Disciplina</th>
+            <th>Prova 1 / TAF 1</th>
+            <th>Prova 2 / TAF 2</th>
+            <th>Trabalho / TAF 3</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${student.scores.length?student.scores.map(x=>{
+            const total=(x.exam1||0)+(x.exam2||0)+(x.work||0);
+            const apt=x.grading_mode==='apt';
+            return`<tr>
+              <td>${esc(x.subject)}<small class="table-sub">${x.hours} h/a${x.grading_mode==='taf'?' • TAF':''}</small></td>
+              <td>${apt?'—':x.exam1==null?'—':fmt(x.exam1)}</td>
+              <td>${apt?'—':x.exam2==null?'—':fmt(x.exam2)}</td>
+              <td>${apt?'—':x.work==null?'—':fmt(x.work)}</td>
+              <td><strong>${apt?esc(x.status||'—'):fmt(total)}</strong></td>
+            </tr>`;
+          }).join(''):'<tr><td colspan="5">Nenhuma nota lançada ainda. Use o formulário abaixo para inserir.</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+  reportCard.hidden=false;
+}
 
-1. Selecione o discente.
-2. Anexe um PDF de até 5 MB e 20 páginas.
-3. Clique em **Ler PDF e conferir notas**.
-4. Confira a prévia, corrija valores se necessário e desmarque matérias que não devem ser importadas.
-5. Clique em **Confirmar e salvar notas**.
+function fieldValue(row,key){
+  const value=row[key];
+  return value==null||value===''?'':String(value);
+}
 
-O PDF deve possuir texto selecionável, preferencialmente em tabela com as colunas **Disciplina**, **AVC**, **AVF**, **Trabalho** e **Resultado**. PDFs formados somente por fotografias ou digitalizações sem camada de texto precisam passar por OCR antes da importação. Nenhuma nota é gravada durante a leitura da prévia, e campos ausentes preservam os lançamentos anteriores.
+function renderEntrySheet(sheet){
+  if(!sheet?.length){
+    studentEntryPanel.hidden=true;
+    studentEntryTable.innerHTML='';
+    return;
+  }
+  studentEntryTable.innerHTML=`
+    <div class="table-wrap">
+      <table class="grade-table student-entry-grid">
+        <thead>
+          <tr>
+            <th>Disciplina</th>
+            <th>Prova 1 / TAF 1</th>
+            <th>Prova 2 / TAF 2</th>
+            <th>Trabalho / TAF 3</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sheet.map(row=>{
+            const fields=Object.fromEntries(row.fields.map(field=>[field.key,field]));
+            const cell=(key)=>{
+              const field=fields[key];
+              if(!field)return'<td class="entry-empty">—</td>';
+              return`<td>
+                <label class="entry-field">
+                  <span>${esc(field.label)} <small>máx. ${field.max}</small></span>
+                  <input data-subject-id="${row.subject_id}" data-field="${field.key}" type="number" min="0" max="${field.max}" step="0.01" inputmode="decimal" value="${esc(fieldValue(row,field.key))}" aria-label="${esc(field.label)} de ${esc(row.subject)}">
+                </label>
+              </td>`;
+            };
+            const title=row.grading_mode==='taf'
+              ?`TAF <small class="table-sub">${esc(row.subject)} • 3 avaliações</small>`
+              :`${esc(row.subject)} <small class="table-sub">2 provas + trabalho</small>`;
+            return`<tr data-subject-id="${row.subject_id}">
+              <td><strong>${title}</strong></td>
+              ${cell('exam1')}
+              ${cell('exam2')}
+              ${cell('work')}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  studentEntryPanel.hidden=false;
+}
 
-O leitor também aceita o relatório administrativo completo, com vários discentes. Nesse caso, utiliza a coluna **Matrícula** para importar exclusivamente as linhas do discente selecionado. A gravação somente é liberada depois da prévia e da validação dos limites de cada componente.
+function collectEntryPayload(){
+  const bySubject=new Map();
+  studentEntryTable.querySelectorAll('[data-subject-id][data-field]').forEach(input=>{
+    const subjectId=input.dataset.subjectId;
+    if(!bySubject.has(subjectId))bySubject.set(subjectId,{subject_id:subjectId});
+    bySubject.get(subjectId)[input.dataset.field]=input.value;
+  });
+  return[...bySubject.values()];
+}
 
-No boletim, o botão **Sair do boletim** encerra a sessão individual, oculta as notas e remove o código digitado. Recomenda-se sempre utilizá-lo em computadores compartilhados.
+function clearStudentSessionUi(messageText=''){
+  studentSession=null;
+  reportCard.innerHTML='';
+  reportCard.hidden=true;
+  studentEntryPanel.hidden=true;
+  studentEntryTable.innerHTML='';
+  studentEntryMessage.textContent='';
+  studentPasswordPanel.hidden=true;
+  studentPasswordForm.reset();
+  updatePasswordMatch();
+  document.querySelector('#access-code').value='';
+  document.querySelector('#form-message').textContent=messageText;
+}
 
-No **Ranking completo do pelotão**, o administrador pode clicar no nome de qualquer discente para consultar as matérias que já possuem lançamento, as notas de cada componente, o total, a colocação e a média.
+const studentLogoutButton=document.createElement('button');
+studentLogoutButton.id='student-logout-button';
+studentLogoutButton.type='button';
+studentLogoutButton.className='button button-dark student-logout-button';
+studentLogoutButton.textContent='Sair da área do aluno';
+document.querySelector('.password-panel-head').append(studentLogoutButton);
+studentLogoutButton.addEventListener('click',async()=>{
+  try{
+    await fetch('/api/student/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  }finally{
+    clearStudentSessionUi('Sessão encerrada com segurança.');
+    document.querySelector('#grade-form').scrollIntoView({behavior:'smooth',block:'center'});
+  }
+});
 
-## Checklist antes de publicar
+studentEntryForm.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const button=document.querySelector('#student-entry-submit');
+  const entries=collectEntryPayload();
+  if(!entries.length){
+    studentEntryMessage.textContent='Nenhuma disciplina disponível para lançamento.';
+    return;
+  }
+  button.disabled=true;
+  studentEntryMessage.textContent='Salvando suas notas...';
+  try{
+    const response=await fetch('/api/student/scores',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({entries}),
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'Não foi possível salvar suas notas.');
+    if(studentSession){
+      studentSession.scores=data.scores||[];
+      studentSession.entry_sheet=data.entry_sheet||[];
+      if(data.ranking)studentSession.ranking=data.ranking;
+      renderReport(studentSession);
+    }
+    renderEntrySheet(data.entry_sheet);
+    const cleared=Number(data.cleared||0);
+    studentEntryMessage.textContent=cleared
+      ?`${data.saved} disciplina(s) salva(s) e ${cleared} limpa(s) com sucesso.`
+      :`${data.saved} disciplina(s) salva(s) com sucesso.`;
+    reportCard.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(error){
+    studentEntryMessage.textContent=error.message;
+  }finally{
+    button.disabled=false;
+  }
+});
 
-- Revisar nome, e-mail e contatos institucionais em `index.html`.
-- Confirmar autorização de uso do escudo em `assets/escudo-efas.png`.
-- Testar login, troca de senha, cadastro, lançamento, calendário e consulta individual.
-- Confirmar que `/data/notas.db`, `/server.py`, `/.git/` e `/.env` retornam erro 404.
-- Usar HTTPS e `EFAS_COOKIE_SECURE=1`.
-- Restringir o acesso administrativo conforme a política da instituição.
-- Definir rotina de backup e observar as obrigações da LGPD.
+document.querySelector('#grade-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const id=document.querySelector('#student-id').value.trim();
+  const code=document.querySelector('#access-code').value;
+  const message=document.querySelector('#form-message');
+  try{
+    const response=await fetch('/api/grades',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,code}),
+    });
+    if(!response.ok)throw 0;
+    const student=await response.json();
+    studentSession=student;
+    message.textContent='';
+    renderReport(student);
+    renderEntrySheet(student.entry_sheet||[]);
+    studentEntryMessage.textContent='';
+    studentEntryPanel.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch{
+    message.textContent='Matrícula ou código de acesso inválido.';
+    clearStudentSessionUi('Matrícula ou código de acesso inválido.');
+  }
+});
 
-## Edição visual
-
-- Textos e contatos: `index.html`.
-- Cores e responsividade: variáveis e media queries em `styles.css`.
-- Comportamento do portal: `script.js`.
-- Comportamento administrativo: `admin.js`.
-- Escudo: substitua `assets/escudo-efas.png`, mantendo o nome e preferencialmente as proporções.
-
-Não inclua senhas, códigos de acesso ou bancos reais em commits, capturas de tela ou chamados de suporte.
+const navLinks=[...menu.querySelectorAll("a[href^='#']")];
+const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{
+  if(entry.isIntersecting){
+    navLinks.forEach(link=>link.classList.toggle('active',link.getAttribute('href')===`#${entry.target.id}`));
+  }
+}),{rootMargin:'-35% 0px -55%'});
+document.querySelectorAll('main section[id]').forEach(s=>observer.observe(s));
+document.querySelector('#current-year').textContent=new Date().getFullYear();
