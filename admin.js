@@ -47,7 +47,6 @@ function renderPdfScorePreview(entries){
 }
 async function analyzePdfImport(event){
   event.preventDefault();
-  if(event.submitter?.id==='student-pdf-confirm')return confirmPdfImport(event);
   const form=$('#student-pdf-score-form'),file=$('#student-score-pdf').files[0],student_id=$('#pdf-score-student').value;
   const button=$('#student-pdf-analyze-button'),message=form.querySelector('.panel-message');
   if(!student_id){message.textContent='Selecione o discente antes de importar o PDF.';$('#pdf-score-student').focus();showAdminFeedback({title:'Falta escolher o discente',eyebrow:'Atenção',message:'Selecione o discente antes de ler o PDF.',userAction:'Escolha o nome na lista e tente novamente.',tone:'warning'});return}
@@ -77,43 +76,48 @@ $('#pdf-score-student').addEventListener('change',()=>{pdfImportStudentId='';$('
 $('#student-score-pdf').addEventListener('change',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML=''});
 $('#student-pdf-cancel').addEventListener('click',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML='';$('#student-pdf-confirm-message').textContent=''});
 async function confirmPdfImport(event){
-  event.preventDefault();
-  event.stopPropagation();
+  event?.preventDefault();
+  event?.stopPropagation();
   const button=$('#student-pdf-confirm'),message=$('#student-pdf-confirm-message'),formMessage=$('#student-pdf-score-form .panel-message');
+  if(!button||!message){window.alert('O botão de confirmação não foi carregado corretamente. Atualize a página e tente novamente.');return}
   if(button.dataset.saving==='true')return;
-  const student_id=pdfImportStudentId||$('#pdf-score-student').value;
-  const entries=[...$('#student-pdf-preview-table tbody tr')]
-    .filter(row=>row.querySelector('.pdf-import-check')?.checked)
-    .map(row=>{const entry={subject_id:row.dataset.subjectId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry});
-  if(!student_id){message.textContent='Selecione novamente o discente antes de salvar.';showAdminFeedback({title:'Discente não identificado',eyebrow:'Atenção',message:'Não foi possível identificar o discente desta importação.',userAction:'Selecione o discente, leia o PDF outra vez e confirme o salvamento.',tone:'warning'});return}
-  if(!entries.length){message.textContent='Selecione pelo menos uma matéria para importar.';showAdminFeedback({title:'Nenhuma matéria marcada',eyebrow:'Atenção',message:'Marque pelo menos uma disciplina na prévia para salvar.',userAction:'Marque as caixas das matérias desejadas e clique novamente em salvar.',tone:'warning'});return}
-  button.dataset.saving='true';button.disabled=true;button.textContent='Salvando...';message.textContent='Enviando e conferindo as notas no banco de dados...';
+  button.dataset.saving='true';button.disabled=true;button.textContent='Salvando notas...';message.textContent='Preparando o lançamento das notas...';
   try{
+    const student_id=pdfImportStudentId||$('#pdf-score-student')?.value;
+    if(!student_id)throw new Error('Selecione novamente o discente, leia o PDF e tente salvar.');
+    const rows=[...document.querySelectorAll('#student-pdf-preview-table tbody tr')];
+    const entries=rows
+      .filter(row=>row.querySelector('.pdf-import-check')?.checked)
+      .map(row=>{const entry={subject_id:row.dataset.subjectId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry});
+    if(!entries.length)throw new Error('Marque pelo menos uma disciplina na prévia antes de salvar.');
     const student=cache.students.find(item=>String(item.id)===String(student_id));
     let saved=0;
     for(const entry of entries){
+      message.textContent=`Salvando ${saved+1} de ${entries.length}: aguarde...`;
       await saveScoreResult({
         student_id,
         ...entry,
         observation:student?.observation||''
       });
       saved+=1;
-      message.textContent=`Salvando notas... ${saved} de ${entries.length} disciplina(s).`;
+      message.textContent=`Salvando notas: ${saved} de ${entries.length} concluída(s).`;
     }
-    const success=`${saved} disciplina(s) salva(s) pela mesma rotina do lançamento manual.`;
+    const success=`Salvo com sucesso: ${saved} disciplina(s) lançada(s).`;
     message.textContent=success;formMessage.textContent=`Notas salvas para o discente selecionado. ${success}`;
-    button.textContent='Importação concluída';pdfImportStudentId=student_id;
+    button.textContent='Notas salvas';pdfImportStudentId=student_id;
     $('#student-score-pdf').value='';
     try{await loadData();$('#pdf-score-student').value=student_id}
     catch{formMessage.textContent=`${success} A tela não conseguiu atualizar automaticamente; clique em Atualizar para conferir.`}
     $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'center'});
   }catch(error){
-    const detail=error.message==='Rota inexistente.'?'O servidor ainda não possui a atualização da importação por PDF. Atualize também o backend no Render.':(error.message||'Não foi possível salvar as notas.');
-    const userAction=error.userAction||(error.message==='Rota inexistente.'?'Peça para publicar o painel e o servidor juntos e depois atualize a página com Ctrl+F5.':'Confira os detalhes abaixo, corrija o que for necessário e tente salvar novamente.');
+    const detail=error?.message||'Não foi possível salvar as notas.';
+    const userAction=error?.userAction||'Confira o discente, as disciplinas e os valores mostrados na prévia. Depois tente novamente.';
     message.textContent=detail;formMessage.textContent=detail;button.textContent='Tentar salvar novamente';
-    showAdminFeedback({title:'As notas não foram confirmadas',eyebrow:'Erro ao salvar',message:detail,userAction,logs:error.logs||[{level:'error',message:detail}],tone:'error'});
+    showAdminFeedback({title:'Erro ao salvar as notas',eyebrow:'Falha no lançamento',message:detail,userAction,logs:error?.logs||[{level:'error',message:detail}],tone:'error'});
   }finally{
     button.dataset.saving='false';button.disabled=false;
   }
 }
+const pdfConfirmButton=$('#student-pdf-confirm');
+if(pdfConfirmButton)pdfConfirmButton.onclick=confirmPdfImport;
 // O botão existe desde o carregamento da página; o vínculo direto garante o clique.
