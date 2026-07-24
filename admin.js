@@ -46,6 +46,7 @@ function renderPdfScorePreview(entries){
 }
 async function analyzePdfImport(event){
   event.preventDefault();
+  if(event.submitter?.id==='student-pdf-confirm')return confirmPdfImport(event);
   const form=$('#student-pdf-score-form'),file=$('#student-score-pdf').files[0],student_id=$('#pdf-score-student').value;
   const button=$('#student-pdf-analyze-button'),message=form.querySelector('.panel-message');
   if(!student_id){message.textContent='Selecione o discente antes de importar o PDF.';$('#pdf-score-student').focus();showAdminFeedback({title:'Falta escolher o discente',eyebrow:'Atenção',message:'Selecione o discente antes de ler o PDF.',userAction:'Escolha o nome na lista e tente novamente.',tone:'warning'});return}
@@ -118,4 +119,3 @@ async function confirmPdfImport(event){
   }
 }
 // O botão existe desde o carregamento da página; o vínculo direto garante o clique.
-$('#student-pdf-confirm').addEventListener('click',confirmPdfImport);
