@@ -14,6 +14,7 @@ SESSIONS = {}
 STUDENT_SESSIONS = {}
 USER = os.environ.get("EFAS_ADMIN_USER", "administrador")
 INITIAL_PASSWORD = os.environ.get("EFAS_INITIAL_ADMIN_PASSWORD", "")
+RESET_ADMIN_PASSWORD = os.environ.get("EFAS_RESET_ADMIN_PASSWORD", "")
 COOKIE_SECURE = os.environ.get("EFAS_COOKIE_SECURE", "0") == "1"
 PUBLIC_FILES = {
     "/index.html", "/admin.html", "/styles.css", "/script.js", "/admin.js",
@@ -21,7 +22,7 @@ PUBLIC_FILES = {
 }
 
 SUBJECTS = [
- (12,"Instrumentos de Menor Potencial Ofensivo",1),(16,"Saúde Integral",1),(20,"Gestão Logística",1),(20,"Gestão Orçamentária e Financeira",1),(20,"Resolução de Conflitos e Técnicas de Mediação",1),(20,"Tecnologias Aplicadas à Atividade Policial",1),(30,"Análise Criminal",1),(30,"Comunicação Organizacional",1),(30,"Direito Civil Aplicado à Atividade Policial",1),(30,"Direito Penal Militar",1),(30,"Direito Processual Penal Comum e Militar",1),(30,"Direitos Humanos",1),(30,"Gestão de Serviços Operacionais",1),(30,"Inteligência de Segurança Pública",1),(30,"Legislação Aplicada à Atividade Policial",1),(30,"Liderança Policial Militar e Gestão de Pessoas",1),(30,"Polícia Comunitária",1),(30,"Proteção e Defesa Civil",1),
+ (12,"Instrumentos de Menor Potencial Ofensivo",1),(16,"Saúde Integral",1),(20,"Gestão Logística",1),(20,"Gestão Orçamentária e Financeira",2),(20,"Resolução de Conflitos e Técnicas de Mediação",1),(20,"Tecnologias Aplicadas à Atividade Policial",1),(30,"Análise Criminal",1),(30,"Comunicação Organizacional",2),(30,"Direito Civil Aplicado à Atividade Policial",1),(30,"Direito Penal Militar",2),(30,"Direito Processual Penal Comum e Militar",1),(30,"Direitos Humanos",1),(30,"Gestão de Serviços Operacionais",2),(30,"Inteligência de Segurança Pública",2),(30,"Legislação Aplicada à Atividade Policial",1),(30,"Liderança Policial Militar e Gestão de Pessoas",1),(30,"Polícia Comunitária",2),(30,"Proteção e Defesa Civil",1),
  (40,"Defesa Pessoal Policial",2),(40,"Direito Penal",2),(40,"Ordem Unida",2),(40,"Policiamento Ostensivo de Trânsito",2),(40,"Redação de Documentos Institucionais da PMMG",2),(50,"Legislação Institucional Aplicada à Gestão de Recursos Humanos",2),(60,"Armamento e Tiro Policial",2),(70,"Processos Administrativos",2),(70,"Técnica Policial Militar",2),(80,"Educação Física Militar",2),(270,"APMI – Atividades Policiais e Militares Interdisciplinares",2)]
 
 # Disciplinas liberadas para o próprio discente lançar notas.
@@ -228,6 +229,27 @@ def initialize():
             if len(INITIAL_PASSWORD) < 12:
                 raise RuntimeError("Defina EFAS_INITIAL_ADMIN_PASSWORD com pelo menos 12 caracteres antes do primeiro uso.")
             salt,digest=password_hash(INITIAL_PASSWORD); db.execute("INSERT INTO admins VALUES(?,?,?,1)",(USER,salt,digest))
+        # Redefinição controlada para bancos persistentes do Render.
+        # Cada valor diferente de EFAS_RESET_ADMIN_PASSWORD é aplicado somente uma vez.
+        if RESET_ADMIN_PASSWORD:
+            if len(RESET_ADMIN_PASSWORD) < 12:
+                raise RuntimeError("EFAS_RESET_ADMIN_PASSWORD deve possuir pelo menos 12 caracteres.")
+            reset_marker = hashlib.sha256(RESET_ADMIN_PASSWORD.encode()).hexdigest()
+            applied_marker = db.execute(
+                "SELECT value FROM settings WHERE key='admin_password_reset_marker'"
+            ).fetchone()
+            if not applied_marker or applied_marker[0] != reset_marker:
+                salt,digest=password_hash(RESET_ADMIN_PASSWORD)
+                db.execute(
+                    "UPDATE admins SET salt=?,password_hash=?,must_change=1 WHERE username=?",
+                    (salt,digest,USER),
+                )
+                db.execute(
+                    """INSERT INTO settings(key,value)
+                       VALUES('admin_password_reset_marker',?)
+                       ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                    (reset_marker,),
+                )
         db.executemany("INSERT INTO subjects(hours,name,exam_count) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET hours=excluded.hours,exam_count=excluded.exam_count",SUBJECTS)
         db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
         db.execute("UPDATE subjects SET grading_mode='taf' WHERE name='Educação Física Militar'")
@@ -431,6 +453,16 @@ def notes_report_pdf(db):
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*args,**kwargs): super().__init__(*args,directory=str(ROOT),**kwargs)
+    def public_file_is_safe(self,path):
+        target = ROOT / path.lstrip("/")
+        if not target.is_file():
+            return False
+        if path in ("/index.html","/admin.html"):
+            try:
+                return target.read_bytes()[:32].lstrip().lower().startswith(b"<!doctype html")
+            except OSError:
+                return False
+        return True
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
@@ -478,7 +510,20 @@ class Handler(SimpleHTTPRequestHandler):
         elif path not in PUBLIC_FILES:
             self.send_error(404, "Arquivo não encontrado")
             return
+        if not self.public_file_is_safe(self.path):
+            self.send_error(500, "Arquivo publico invalido. Restaure a publicacao.")
+            return
         super().do_GET()
+    def do_HEAD(self):
+        path=urlsplit(self.path).path
+        if path=="/": self.path="/index.html"
+        elif path not in PUBLIC_FILES:
+            self.send_error(404, "Arquivo nao encontrado")
+            return
+        if not self.public_file_is_safe(self.path):
+            self.send_error(500, "Arquivo publico invalido. Restaure a publicacao.")
+            return
+        super().do_HEAD()
     def do_POST(self):
         if int(self.headers.get("Content-Length",0) or 0)>8*1024*1024:self.output({"error":"Arquivo ou solicitação acima do limite permitido."},413);return
         data=self.body()
