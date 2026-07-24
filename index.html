@@ -6,7 +6,7 @@
   <meta name="description" content="Portal institucional para consulta de calendário de provas e notas finais do CFS — 1º Pelotão.">
   <meta name="theme-color" content="#1d1c18">
   <title>Controle de Notas | CFS — 1º Pelotão</title>
-  <link rel="stylesheet" href="styles.css?v=20260724-28">
+  <link rel="stylesheet" href="styles.css?v=20260724-29">
 </head>
 <body class="portal-app">
   <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -24,7 +24,8 @@
       <nav id="menu-principal" class="main-nav" aria-label="Navegação principal">
         <a href="#inicio" data-nav="inicio" class="active">Início</a>
         <a href="#calendario" data-nav="calendario">Calendário</a>
-        <a href="#notas" data-nav="notas">Minhas notas</a>
+        <a href="#boletim" data-nav="boletim">Boletim</a>
+        <a href="#lancamento" data-nav="lancamento">Lançar notas</a>
         <a href="admin.html" class="nav-admin">Administração</a>
       </nav>
     </div>
@@ -57,7 +58,7 @@
             </div>
             <div id="home-session-panel" hidden>
               <h2 class="login-card-title">Sessão ativa</h2>
-              <a class="button button-gold full" href="#notas" data-nav="notas">Minhas notas</a>
+              <a class="button button-gold full" href="#boletim" data-nav="boletim">Ver boletim</a>
             </div>
           </div>
         </div>
@@ -77,30 +78,18 @@
       </div>
     </section>
 
-    <section class="view grade-section" id="notas" data-view="notas" aria-labelledby="grades-title" hidden>
+    <section class="view grade-section" id="boletim" data-view="boletim" aria-labelledby="boletim-title" hidden>
       <div class="container">
-        <div id="grades-guest" class="grades-guest">
-          <h2 id="grades-title">Minhas notas</h2>
+        <div id="boletim-guest" class="grades-guest">
+          <h2 id="boletim-title">Boletim</h2>
           <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
         </div>
-        <div id="grades-authed" class="grades-authed" hidden>
+        <div id="boletim-authed" class="grades-authed" hidden>
           <div class="grades-authed-head">
-            <h2>Minhas notas</h2>
+            <h2>Boletim</h2>
             <button id="student-logout-button" class="button button-dark student-logout-button" type="button">Sair</button>
           </div>
           <div id="report-card" class="report-card" hidden aria-live="polite"></div>
-          <section id="student-entry-panel" class="student-entry-panel" hidden aria-labelledby="student-entry-title">
-            <div class="student-entry-head">
-              <h3 id="student-entry-title">Lançar notas</h3>
-            </div>
-            <form id="student-entry-form">
-              <div id="student-entry-table" class="student-entry-table"></div>
-              <div class="student-entry-actions">
-                <button id="student-entry-submit" class="button button-gold" type="submit">Salvar</button>
-                <p id="student-entry-message" class="form-message" role="status" aria-live="polite"></p>
-              </div>
-            </form>
-          </section>
           <section id="student-password-panel" class="student-password-panel" hidden aria-labelledby="student-password-title">
             <div class="password-panel-head">
               <div>
@@ -128,11 +117,35 @@
         </div>
       </div>
     </section>
+
+    <section class="view grade-section" id="lancamento" data-view="lancamento" aria-labelledby="lancamento-title" hidden>
+      <div class="container">
+        <div id="lancamento-guest" class="grades-guest">
+          <h2 id="lancamento-title">Lançar notas</h2>
+          <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
+        </div>
+        <div id="lancamento-authed" class="grades-authed" hidden>
+          <div class="grades-authed-head">
+            <h2>Lançar notas</h2>
+          </div>
+          <section id="student-entry-panel" class="student-entry-panel" hidden aria-labelledby="student-entry-title">
+            <form id="student-entry-form">
+              <div id="student-entry-table" class="student-entry-table"></div>
+              <div class="student-entry-actions">
+                <button id="student-entry-submit" class="button button-gold" type="submit">Salvar</button>
+                <p id="student-entry-message" class="form-message" role="status" aria-live="polite"></p>
+              </div>
+            </form>
+          </section>
+          <p id="lancamento-empty" class="empty-state" hidden>Nenhuma disciplina liberada para lançamento.</p>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="site-footer site-footer-compact">
     <div class="container copyright">© <span id="current-year"></span> CFS — 1º Pelotão</div>
   </footer>
-  <script src="script.js?v=20260724-28" defer></script>
+  <script src="script.js?v=20260724-29" defer></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 let exams=[];
 let studentSession=null;
-const VIEW_IDS=new Set(['inicio','calendario','notas']);
+const VIEW_IDS=new Set(['inicio','calendario','boletim','lancamento']);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const menuButton=document.querySelector('.menu-toggle');
@@ -20,8 +20,9 @@ const confirmPassword=document.querySelector('#student-confirm-password');
 const matchIndicator=document.querySelector('#password-match-indicator');
 const passwordSubmit=document.querySelector('#student-password-submit');
 const showPasswords=document.querySelector('#show-student-passwords');
-const gradesGuest=document.querySelector('#grades-guest');
-const gradesAuthed=document.querySelector('#grades-authed');
+const gradesGuests=[...document.querySelectorAll('.grades-guest')];
+const gradesAutheds=[...document.querySelectorAll('.grades-authed')];
+const lancamentoEmpty=document.querySelector('#lancamento-empty');
 const homeLoginPanel=document.querySelector('#home-login-panel');
 const homeSessionPanel=document.querySelector('#home-session-panel');
 const views=[...document.querySelectorAll('[data-view]')];
@@ -53,12 +54,16 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&menu.classList.contains('open'))closeMenu();
 });
 
-function syncGradesPanels(){
+function syncStudentUi(){
   const loggedIn=Boolean(studentSession);
-  if(gradesGuest)gradesGuest.hidden=loggedIn;
-  if(gradesAuthed)gradesAuthed.hidden=!loggedIn;
+  gradesGuests.forEach(el=>{el.hidden=loggedIn;});
+  gradesAutheds.forEach(el=>{el.hidden=!loggedIn;});
   if(homeLoginPanel)homeLoginPanel.hidden=loggedIn;
   if(homeSessionPanel)homeSessionPanel.hidden=!loggedIn;
+  if(lancamentoEmpty&&studentEntryPanel){
+    const hasSheet=loggedIn&&!studentEntryPanel.hidden;
+    lancamentoEmpty.hidden=hasSheet||!loggedIn;
+  }
 }
 
 function showView(id,{updateHash=true}={}){
@@ -71,7 +76,7 @@ function showView(id,{updateHash=true}={}){
   menu.querySelectorAll('[data-nav]').forEach(link=>{
     link.classList.toggle('active',link.dataset.nav===viewId);
   });
-  if(viewId==='notas')syncGradesPanels();
+  if(viewId==='boletim'||viewId==='lancamento')syncStudentUi();
   closeMenu();
   window.scrollTo({top:0,behavior:'auto'});
   if(updateHash){
@@ -81,7 +86,8 @@ function showView(id,{updateHash=true}={}){
 }
 
 function viewFromHash(){
-  const id=(location.hash||'#inicio').slice(1);
+  const raw=(location.hash||'#inicio').slice(1);
+  const id=raw==='notas'?'boletim':raw;
   return VIEW_IDS.has(id)?id:'inicio';
 }
 
@@ -264,6 +270,7 @@ function renderEntrySheet(sheet){
   if(!sheet?.length){
     studentEntryPanel.hidden=true;
     studentEntryTable.innerHTML='';
+    syncStudentUi();
     return;
   }
   const desktopRows=sheet.map(row=>{
@@ -316,6 +323,7 @@ function renderEntrySheet(sheet){
     </div>
     <div class="entry-cards-mobile">${mobileCards}</div>`;
   studentEntryPanel.hidden=false;
+  syncStudentUi();
 }
 
 function collectEntryPayload(){
@@ -344,7 +352,7 @@ function clearStudentSessionUi(messageText=''){
   updatePasswordMatch();
   document.querySelector('#access-code').value='';
   document.querySelector('#form-message').textContent=messageText;
-  syncGradesPanels();
+  syncStudentUi();
 }
 
 const studentLogoutButton=document.querySelector('#student-logout-button');
@@ -418,8 +426,8 @@ document.querySelector('#grade-form').addEventListener('submit',async e=>{
     renderReport(student);
     renderEntrySheet(student.entry_sheet||[]);
     studentEntryMessage.textContent='';
-    syncGradesPanels();
-    showView('notas');
+    syncStudentUi();
+    showView('boletim');
   }catch{
     message.textContent='Matrícula ou código de acesso inválido.';
     clearStudentSessionUi('Matrícula ou código de acesso inválido.');
@@ -428,4 +436,4 @@ document.querySelector('#grade-form').addEventListener('submit',async e=>{
 
 document.querySelector('#current-year').textContent=new Date().getFullYear();
 showView(viewFromHash(),{updateHash:false});
-syncGradesPanels();
+syncStudentUi();
