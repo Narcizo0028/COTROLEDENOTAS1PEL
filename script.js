@@ -1,9 +1,11 @@
 let exams=[];
 let studentSession=null;
+const VIEW_IDS=new Set(['inicio','calendario','notas','administracao']);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const menuButton=document.querySelector('.menu-toggle');
 const menu=document.querySelector('.main-nav');
+const navBackdrop=document.querySelector('#nav-backdrop');
 const examList=document.querySelector('#exam-list');
 const filter=document.querySelector('#discipline-filter');
 const reportCard=document.querySelector('#report-card');
@@ -18,30 +20,81 @@ const confirmPassword=document.querySelector('#student-confirm-password');
 const matchIndicator=document.querySelector('#password-match-indicator');
 const passwordSubmit=document.querySelector('#student-password-submit');
 const showPasswords=document.querySelector('#show-student-passwords');
+const gradesGuest=document.querySelector('#grades-guest');
+const gradesAuthed=document.querySelector('#grades-authed');
+const homeLoginPanel=document.querySelector('#home-login-panel');
+const homeSessionPanel=document.querySelector('#home-session-panel');
+const views=[...document.querySelectorAll('[data-view]')];
 
-menuButton.addEventListener('click',()=>{
-  const open=menu.classList.toggle('open');
-  menuButton.setAttribute('aria-expanded',String(open));
-  menuButton.setAttribute('aria-label',open?'Fechar menu':'Abrir menu');
-});
-menu.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{
+function closeMenu(){
   menu.classList.remove('open');
   menuButton.setAttribute('aria-expanded','false');
-}));
-
-/* Mantém a barra lateral mobile sincronizada com a seção visível. */
-const menuSections=[...menu.querySelectorAll('a[href^="#"]')]
-  .map(link=>({link,section:document.querySelector(link.getAttribute('href'))}))
-  .filter(item=>item.section);
-if('IntersectionObserver' in window){
-  const sectionObserver=new IntersectionObserver(entries=>{
-    const visible=entries.filter(entry=>entry.isIntersecting)
-      .sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];
-    if(!visible)return;
-    menuSections.forEach(item=>item.link.classList.toggle('active',item.section===visible.target));
-  },{rootMargin:'-30% 0px -55% 0px',threshold:[0,.1,.35]});
-  menuSections.forEach(item=>sectionObserver.observe(item.section));
+  menuButton.setAttribute('aria-label','Abrir menu');
+  document.body.classList.remove('nav-open');
+  if(navBackdrop)navBackdrop.hidden=true;
 }
+
+function openMenu(){
+  menu.classList.add('open');
+  menuButton.setAttribute('aria-expanded','true');
+  menuButton.setAttribute('aria-label','Fechar menu');
+  document.body.classList.add('nav-open');
+  if(navBackdrop)navBackdrop.hidden=false;
+}
+
+function setMenuOpen(open){
+  if(open)openMenu();
+  else closeMenu();
+}
+
+menuButton.addEventListener('click',()=>setMenuOpen(!menu.classList.contains('open')));
+if(navBackdrop)navBackdrop.addEventListener('click',closeMenu);
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&menu.classList.contains('open'))closeMenu();
+});
+
+function syncGradesPanels(){
+  const loggedIn=Boolean(studentSession);
+  if(gradesGuest)gradesGuest.hidden=loggedIn;
+  if(gradesAuthed)gradesAuthed.hidden=!loggedIn;
+  if(homeLoginPanel)homeLoginPanel.hidden=loggedIn;
+  if(homeSessionPanel)homeSessionPanel.hidden=!loggedIn;
+}
+
+function showView(id,{updateHash=true}={}){
+  const viewId=VIEW_IDS.has(id)?id:'inicio';
+  views.forEach(view=>{
+    const active=view.dataset.view===viewId;
+    view.classList.toggle('is-active',active);
+    view.hidden=!active;
+  });
+  menu.querySelectorAll('[data-nav]').forEach(link=>{
+    link.classList.toggle('active',link.dataset.nav===viewId);
+  });
+  if(viewId==='notas')syncGradesPanels();
+  closeMenu();
+  window.scrollTo({top:0,behavior:'auto'});
+  if(updateHash){
+    const nextHash=`#${viewId}`;
+    if(location.hash!==nextHash)history.replaceState(null,'',nextHash);
+  }
+}
+
+function viewFromHash(){
+  const id=(location.hash||'#inicio').slice(1);
+  return VIEW_IDS.has(id)?id:'inicio';
+}
+
+document.addEventListener('click',e=>{
+  const link=e.target.closest('[data-nav]');
+  if(!link)return;
+  const id=link.dataset.nav;
+  if(!VIEW_IDS.has(id))return;
+  e.preventDefault();
+  showView(id);
+});
+
+window.addEventListener('hashchange',()=>showView(viewFromHash(),{updateHash:false}));
 
 function dateParts(iso){
   const d=new Date(`${iso}T12:00:00`);
@@ -117,8 +170,27 @@ studentPasswordForm.addEventListener('submit',async e=>{
   }
 });
 
+function scoreCell(apt,value){
+  if(apt)return'—';
+  return value==null?'—':fmt(value);
+}
+
 function renderReport(student){
   const r=student.ranking;
+  const rows=student.scores.length?student.scores.map(x=>{
+    const total=(x.exam1||0)+(x.exam2||0)+(x.work||0);
+    const apt=x.grading_mode==='apt';
+    const totalLabel=apt?esc(x.status||'—'):fmt(total);
+    return{
+      subject:x.subject,
+      meta:`${x.hours} h/a${x.grading_mode==='taf'?' • TAF':''}`,
+      exam1:scoreCell(apt,x.exam1),
+      exam2:scoreCell(apt,x.exam2),
+      work:scoreCell(apt,x.work),
+      total:totalLabel,
+    };
+  }):null;
+
   reportCard.innerHTML=`
     <div class="report-header">
       <div>
@@ -132,7 +204,7 @@ function renderReport(student){
       </div>
     </div>
     ${student.observation?`<div class="student-observation"><strong>Observação da administração</strong><p>${esc(student.observation)}</p></div>`:''}
-    <div class="table-wrap">
+    <div class="table-wrap report-table-desktop">
       <table class="grade-table">
         <thead>
           <tr>
@@ -144,19 +216,29 @@ function renderReport(student){
           </tr>
         </thead>
         <tbody>
-          ${student.scores.length?student.scores.map(x=>{
-            const total=(x.exam1||0)+(x.exam2||0)+(x.work||0);
-            const apt=x.grading_mode==='apt';
-            return`<tr>
-              <td>${esc(x.subject)}<small class="table-sub">${x.hours} h/a${x.grading_mode==='taf'?' • TAF':''}</small></td>
-              <td>${apt?'—':x.exam1==null?'—':fmt(x.exam1)}</td>
-              <td>${apt?'—':x.exam2==null?'—':fmt(x.exam2)}</td>
-              <td>${apt?'—':x.work==null?'—':fmt(x.work)}</td>
-              <td><strong>${apt?esc(x.status||'—'):fmt(total)}</strong></td>
-            </tr>`;
-          }).join(''):'<tr><td colspan="5">Nenhuma nota lançada ainda. Use o formulário abaixo para inserir.</td></tr>'}
+          ${rows?rows.map(x=>`<tr>
+              <td>${esc(x.subject)}<small class="table-sub">${esc(x.meta)}</small></td>
+              <td>${x.exam1}</td>
+              <td>${x.exam2}</td>
+              <td>${x.work}</td>
+              <td><strong>${x.total}</strong></td>
+            </tr>`).join(''):'<tr><td colspan="5">Nenhuma nota lançada ainda. Use o formulário abaixo para inserir.</td></tr>'}
         </tbody>
       </table>
+    </div>
+    <div class="report-cards-mobile" aria-label="Boletim por disciplina">
+      ${rows?rows.map(x=>`<article class="score-card">
+          <header>
+            <h4>${esc(x.subject)}</h4>
+            <small>${esc(x.meta)}</small>
+          </header>
+          <dl>
+            <div><dt>Prova 1 / TAF 1</dt><dd>${x.exam1}</dd></div>
+            <div><dt>Prova 2 / TAF 2</dt><dd>${x.exam2}</dd></div>
+            <div><dt>Trabalho / TAF 3</dt><dd>${x.work}</dd></div>
+            <div class="score-card-total"><dt>Total</dt><dd>${x.total}</dd></div>
+          </dl>
+        </article>`).join(''):'<p class="empty-state">Nenhuma nota lançada ainda. Use o formulário abaixo para inserir.</p>'}
     </div>`;
   reportCard.hidden=false;
 }
@@ -166,14 +248,55 @@ function fieldValue(row,key){
   return value==null||value===''?'':String(value);
 }
 
+function entryFieldMarkup(row,field){
+  return`<label class="entry-field">
+    <span>${esc(field.label)} <small>máx. ${field.max}</small></span>
+    <input data-subject-id="${row.subject_id}" data-field="${field.key}" type="number" min="0" max="${field.max}" step="0.01" inputmode="decimal" value="${esc(fieldValue(row,field.key))}" aria-label="${esc(field.label)} de ${esc(row.subject)}">
+  </label>`;
+}
+
 function renderEntrySheet(sheet){
   if(!sheet?.length){
     studentEntryPanel.hidden=true;
     studentEntryTable.innerHTML='';
     return;
   }
+  const desktopRows=sheet.map(row=>{
+    const fields=Object.fromEntries(row.fields.map(field=>[field.key,field]));
+    const cell=key=>{
+      const field=fields[key];
+      if(!field)return'<td class="entry-empty">—</td>';
+      return`<td>${entryFieldMarkup(row,field)}</td>`;
+    };
+    const title=row.grading_mode==='taf'
+      ?`TAF <small class="table-sub">${esc(row.subject)} • 3 avaliações</small>`
+      :`${esc(row.subject)} <small class="table-sub">2 provas + trabalho</small>`;
+    return`<tr data-subject-id="${row.subject_id}">
+      <td><strong>${title}</strong></td>
+      ${cell('exam1')}
+      ${cell('exam2')}
+      ${cell('work')}
+    </tr>`;
+  }).join('');
+
+  const mobileCards=sheet.map(row=>{
+    const title=row.grading_mode==='taf'
+      ?`TAF • ${esc(row.subject)}`
+      :esc(row.subject);
+    const subtitle=row.grading_mode==='taf'?'3 avaliações':'2 provas + trabalho';
+    return`<article class="entry-card" data-subject-id="${row.subject_id}">
+      <header>
+        <h4>${title}</h4>
+        <small>${subtitle}</small>
+      </header>
+      <div class="entry-card-fields">
+        ${row.fields.map(field=>entryFieldMarkup(row,field)).join('')}
+      </div>
+    </article>`;
+  }).join('');
+
   studentEntryTable.innerHTML=`
-    <div class="table-wrap">
+    <div class="table-wrap entry-table-desktop">
       <table class="grade-table student-entry-grid">
         <thead>
           <tr>
@@ -183,38 +306,20 @@ function renderEntrySheet(sheet){
             <th>Trabalho / TAF 3</th>
           </tr>
         </thead>
-        <tbody>
-          ${sheet.map(row=>{
-            const fields=Object.fromEntries(row.fields.map(field=>[field.key,field]));
-            const cell=(key)=>{
-              const field=fields[key];
-              if(!field)return'<td class="entry-empty">—</td>';
-              return`<td>
-                <label class="entry-field">
-                  <span>${esc(field.label)} <small>máx. ${field.max}</small></span>
-                  <input data-subject-id="${row.subject_id}" data-field="${field.key}" type="number" min="0" max="${field.max}" step="0.01" inputmode="decimal" value="${esc(fieldValue(row,field.key))}" aria-label="${esc(field.label)} de ${esc(row.subject)}">
-                </label>
-              </td>`;
-            };
-            const title=row.grading_mode==='taf'
-              ?`TAF <small class="table-sub">${esc(row.subject)} • 3 avaliações</small>`
-              :`${esc(row.subject)} <small class="table-sub">2 provas + trabalho</small>`;
-            return`<tr data-subject-id="${row.subject_id}">
-              <td><strong>${title}</strong></td>
-              ${cell('exam1')}
-              ${cell('exam2')}
-              ${cell('work')}
-            </tr>`;
-          }).join('')}
-        </tbody>
+        <tbody>${desktopRows}</tbody>
       </table>
-    </div>`;
+    </div>
+    <div class="entry-cards-mobile">${mobileCards}</div>`;
   studentEntryPanel.hidden=false;
 }
 
 function collectEntryPayload(){
   const bySubject=new Map();
-  studentEntryTable.querySelectorAll('[data-subject-id][data-field]').forEach(input=>{
+  const mobileRoot=studentEntryTable.querySelector('.entry-cards-mobile');
+  const desktopRoot=studentEntryTable.querySelector('.entry-table-desktop');
+  const useMobile=mobileRoot&&getComputedStyle(mobileRoot).display!=='none';
+  const root=useMobile?mobileRoot:(desktopRoot||studentEntryTable);
+  root.querySelectorAll('[data-subject-id][data-field]').forEach(input=>{
     const subjectId=input.dataset.subjectId;
     if(!bySubject.has(subjectId))bySubject.set(subjectId,{subject_id:subjectId});
     bySubject.get(subjectId)[input.dataset.field]=input.value;
@@ -234,20 +339,16 @@ function clearStudentSessionUi(messageText=''){
   updatePasswordMatch();
   document.querySelector('#access-code').value='';
   document.querySelector('#form-message').textContent=messageText;
+  syncGradesPanels();
 }
 
-const studentLogoutButton=document.createElement('button');
-studentLogoutButton.id='student-logout-button';
-studentLogoutButton.type='button';
-studentLogoutButton.className='button button-dark student-logout-button';
-studentLogoutButton.textContent='Sair da área do aluno';
-document.querySelector('.password-panel-head').append(studentLogoutButton);
+const studentLogoutButton=document.querySelector('#student-logout-button');
 studentLogoutButton.addEventListener('click',async()=>{
   try{
     await fetch('/api/student/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   }finally{
     clearStudentSessionUi('Sessão encerrada com segurança.');
-    document.querySelector('#grade-form').scrollIntoView({behavior:'smooth',block:'center'});
+    showView('inicio');
   }
 });
 
@@ -312,18 +413,14 @@ document.querySelector('#grade-form').addEventListener('submit',async e=>{
     renderReport(student);
     renderEntrySheet(student.entry_sheet||[]);
     studentEntryMessage.textContent='';
-    studentEntryPanel.scrollIntoView({behavior:'smooth',block:'start'});
+    syncGradesPanels();
+    showView('notas');
   }catch{
     message.textContent='Matrícula ou código de acesso inválido.';
     clearStudentSessionUi('Matrícula ou código de acesso inválido.');
   }
 });
 
-const navLinks=[...menu.querySelectorAll("a[href^='#']")];
-const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{
-  if(entry.isIntersecting){
-    navLinks.forEach(link=>link.classList.toggle('active',link.getAttribute('href')===`#${entry.target.id}`));
-  }
-}),{rootMargin:'-35% 0px -55%'});
-document.querySelectorAll('main section[id]').forEach(s=>observer.observe(s));
 document.querySelector('#current-year').textContent=new Date().getFullYear();
+showView(viewFromHash(),{updateHash:false});
+syncGradesPanels();
