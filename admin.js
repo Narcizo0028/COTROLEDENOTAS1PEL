@@ -117,5 +117,5 @@ async function confirmPdfImport(event){
     button.dataset.saving='false';button.disabled=false;
   }
 }
-// Delegação mantém o clique ativo mesmo se a prévia for reconstruída.
-document.addEventListener('click',event=>{if(event.target.closest('#student-pdf-confirm'))confirmPdfImport(event)});
+// O botão existe desde o carregamento da página; o vínculo direto garante o clique.
+$('#student-pdf-confirm').addEventListener('click',confirmPdfImport);
