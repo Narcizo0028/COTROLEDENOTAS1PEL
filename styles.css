@@ -134,12 +134,21 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .student-entry-toggle-button.available { background:var(--success); }
 .student-entry-toggle-button.unavailable { background:var(--danger); }
 .student-entry-toggle-button:disabled { cursor:wait; opacity:.65; transform:none; }
+.observation-controls { display:grid; gap:12px; margin-top:12px; }
+.observation-action-buttons { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.observation-action-buttons .button { width:100%; }
+.observation-editor { padding:16px; border:1px solid var(--line); border-radius:8px; background:#f8f6ef; }
+.observation-editor label { display:grid; gap:7px; font-size:.82rem; font-weight:750; }
+.observation-editor textarea { width:100%; min-height:110px; padding:12px; border:1px solid #bdb9ad; border-radius:6px; resize:vertical; font:inherit; }
+.observation-editor textarea:focus { border-color:var(--gold); outline:2px solid rgba(166,137,62,.18); }
+.observation-editor-actions { display:flex; gap:10px; margin-top:12px; }
 .collective-score-panel { margin-bottom:24px; }
 .collective-score-panel .panel-title > label { min-width:min(100%,390px); margin:0; }
 .collective-table input,.collective-table select { min-width:112px; margin:0; padding:9px; }
 .collective-table td:first-child { min-width:260px; }
 @media (max-width:900px) { .score-mode-panel { align-items:flex-start; flex-direction:column; }.score-mode-actions { width:100%; justify-items:start; }.score-mode-buttons,.student-entry-toggle { justify-content:flex-start; }.student-entry-toggle small { text-align:left; } }
 @media (max-width:560px) { .password-panel-head { display:grid; grid-template-columns:auto 1fr; }.student-logout-button { grid-column:1 / -1; width:100%; margin-left:0; }.score-mode-buttons,.score-mode-button { width:100%; }.collective-score-panel .panel-title { display:grid; }.collective-score-panel .panel-title > label { width:100%; } }
+@media (max-width:560px) { .observation-action-buttons { grid-template-columns:1fr; }.observation-editor-actions { flex-direction:column; }.observation-editor-actions .button { width:100%; } }
 
 /* Consulta das notas ao clicar no nome do discente */
 .student-name-button { padding:0; color:#574a22; background:transparent; border:0; border-bottom:1px solid currentColor; font:700 inherit; text-align:left; cursor:pointer; }
