@@ -29,6 +29,20 @@ menu.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{
   menuButton.setAttribute('aria-expanded','false');
 }));
 
+/* Mantém a barra lateral mobile sincronizada com a seção visível. */
+const menuSections=[...menu.querySelectorAll('a[href^="#"]')]
+  .map(link=>({link,section:document.querySelector(link.getAttribute('href'))}))
+  .filter(item=>item.section);
+if('IntersectionObserver' in window){
+  const sectionObserver=new IntersectionObserver(entries=>{
+    const visible=entries.filter(entry=>entry.isIntersecting)
+      .sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];
+    if(!visible)return;
+    menuSections.forEach(item=>item.link.classList.toggle('active',item.section===visible.target));
+  },{rootMargin:'-30% 0px -55% 0px',threshold:[0,.1,.35]});
+  menuSections.forEach(item=>sectionObserver.observe(item.section));
+}
+
 function dateParts(iso){
   const d=new Date(`${iso}T12:00:00`);
   return{day:String(d.getDate()).padStart(2,'0'),month:d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','')};

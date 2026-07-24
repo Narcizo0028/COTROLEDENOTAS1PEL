@@ -275,9 +275,159 @@ button, a { -webkit-tap-highlight-color: transparent; }
   min-height: 0;
 }
 .student-entry-actions .form-message.is-error { color: var(--danger); }
-.panel-message.is-error { color: var(--danger); }
 @media (max-width: 720px) {
   .student-entry-head { flex-direction: column; align-items: stretch; }
   .student-entry-hint { max-width: none; }
   .student-entry-actions .button { width: 100%; }
+}
+
+/* Navegação lateral e formulários otimizados para celular. */
+@media (max-width: 820px) {
+  .menu-toggle {
+    position: relative;
+    z-index: 82;
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+  }
+  .menu-toggle[aria-expanded="true"] span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .menu-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+  .menu-toggle[aria-expanded="true"] span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+  .main-nav {
+    position: fixed;
+    z-index: 80;
+    inset: 0 auto 0 0;
+    width: min(82vw, 310px);
+    display: grid;
+    align-content: start;
+    gap: 7px;
+    padding: 92px 15px 24px;
+    background: #fff;
+    border: 0;
+    border-right: 1px solid var(--line);
+    box-shadow: 18px 0 45px rgba(0,0,0,.18);
+    visibility: hidden;
+    transform: translateX(-105%);
+    transition: transform .22s ease, visibility .22s;
+  }
+  .main-nav.open {
+    display: grid;
+    visibility: visible;
+    transform: translateX(0);
+  }
+  .main-nav a,
+  .main-nav .nav-admin {
+    position: relative;
+    display: grid;
+    grid-template-columns: 38px 1fr;
+    align-items: center;
+    min-height: 54px;
+    margin: 0;
+    padding: 8px 12px 8px 15px;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    border-radius: 9px;
+    text-align: left;
+  }
+  .main-nav a::before {
+    content: "•";
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    color: var(--khaki);
+    background: var(--off-white);
+    border: 1px solid var(--khaki-light);
+    border-radius: 9px;
+    font-size: 1.1rem;
+    font-weight: 900;
+  }
+  .main-nav a[href="#inicio"]::before { content: "⌂"; }
+  .main-nav a[href="#calendario"]::before { content: "▦"; }
+  .main-nav a[href="#notas"]::before { content: "✓"; }
+  .main-nav a[href="#administracao"]::before { content: "⚙"; }
+  .main-nav a::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 9px;
+    bottom: 9px;
+    width: 4px;
+    border-radius: 0 4px 4px 0;
+    background: transparent;
+  }
+  .main-nav a:hover,
+  .main-nav a.active {
+    color: var(--black);
+    background: #f4f0e4;
+  }
+  .main-nav a.active::before {
+    color: #fff;
+    background: var(--black);
+    border-color: var(--gold);
+  }
+  .main-nav a.active::after { background: var(--gold); }
+}
+
+@media (max-width: 600px) {
+  .admin-panel {
+    padding: 20px 16px;
+    border-radius: 11px;
+  }
+  .admin-panel h2 { margin-bottom: 16px; font-size: 1.35rem; }
+  .admin-panel > label,
+  .score-fields > label,
+  .schedule-grid > label,
+  .pdf-score-import-form > label,
+  .password-change-grid > label {
+    gap: 7px;
+    margin-bottom: 10px;
+    padding: 11px;
+    background: #faf8f2;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .admin-panel input,
+  .admin-panel select,
+  .admin-panel textarea,
+  .form-card input,
+  .entry-field input {
+    min-height: 52px;
+    padding: 11px 12px;
+    border-width: 1.5px;
+    border-radius: 9px;
+    background: #fff;
+    font-size: 1rem;
+  }
+  .admin-panel input:focus,
+  .admin-panel select:focus,
+  .admin-panel textarea:focus,
+  .form-card input:focus {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(165,148,97,.17);
+  }
+  .score-fields,
+  .schedule-grid { gap: 10px; }
+  .score-fields > label,
+  .schedule-grid > label { margin: 0; }
+  .admin-panel > .button,
+  .admin-panel form > .button,
+  .form-card > .button {
+    width: 100%;
+    min-height: 52px;
+  }
+  .panel-title,
+  .panel-actions,
+  .admin-dashboard-head {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .panel-actions .button { width: 100%; }
+  .form-card { padding: 22px 17px; border-radius: 11px; }
+  .form-card label { margin-top: 4px; }
+  .student-entry-table .table-wrap { margin-inline: -8px; }
 }
