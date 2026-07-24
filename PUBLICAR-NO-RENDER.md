@@ -1,57 +1,16 @@
-# Publicação nova e limpa no Render
-
-Esta pasta contém somente a aplicação necessária para o Render. Não contém o banco de dados, senhas, arquivos temporários ou configurações do Netlify.
-
-## Regra principal para preservar os dados
-
-Atualize o serviço Render existente `controle-notas-1-pelotao`. Não crie outro serviço e não remova o disco persistente `dados-notas`.
-
-O banco existente permanece no caminho:
-
-`/opt/render/project/src/data/notas.db`
-
-## Etapa 1 - atualizar o repositório
-
-1. Abra o repositório GitHub que já está conectado ao serviço Render.
-2. Substitua os arquivos da aplicação pelo conteúdo desta pasta.
-3. Mantenha a pasta `data` sem arquivo `notas.db`.
-4. Não envie senhas, arquivos `.env` ou bancos `.db`.
-5. Confirme as alterações no GitHub.
-
-## Etapa 2 - conferir o serviço existente
-
-No painel do Render, abra o serviço `controle-notas-1-pelotao` e confirme:
-
-- Runtime: Python.
-- Build Command: `pip install -r requirements.txt`
-- Start Command: `python server.py`
-- Health Check Path: `/`
-- Variável `EFAS_HOST`: `0.0.0.0`
-- Variável `EFAS_PORT`: `10000`
-- Variável `EFAS_ADMIN_USER`: `administrador`
-- Variável `EFAS_COOKIE_SECURE`: `1`
-- Disco persistente `dados-notas` montado em `/opt/render/project/src/data`
-
-Não altere `EFAS_INITIAL_ADMIN_PASSWORD` se o administrador já foi cadastrado. Essa variável é usada somente quando o banco ainda não possui administrador.
-
-## Etapa 3 - publicar
-
-1. No serviço existente, clique em **Manual Deploy**.
-2. Escolha **Deploy latest commit**.
-3. Aguarde a mensagem **Deploy live**.
-4. Acesse `https://controle-notas-1-pelotao.onrender.com/`.
-5. Atualize o navegador com `Ctrl + F5`.
-6. Entre no painel e confira um discente, uma nota já lançada e o calendário.
-
-## O que não fazer
-
-- Não criar outro serviço Render.
-- Não excluir ou recriar o disco persistente.
-- Não alterar o ponto de montagem do disco.
-- Não enviar `data/notas.db` ao GitHub.
-- Não publicar esta aplicação no Netlify.
-- Não clicar em **Clear build cache & deploy** durante a primeira tentativa.
-
-## Verificação dos dados
-
-Depois da publicação, os nomes, senhas, notas e calendário devem continuar disponíveis porque o disco persistente não é substituído pelo código. Se algum dado não aparecer, interrompa as alterações e confirme se o disco continua montado no caminho indicado acima.
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Administração | CFS — 1º Pelotão</title><link rel="stylesheet" href="styles.css"></head>
+<body class="admin-page"><header class="site-header"><div class="topbar">Área restrita • Administração EFAS</div><div class="nav-wrap container"><a class="brand" href="index.html"><img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58"><span><strong>Controle de Notas</strong><small>Painel administrativo</small></span></a><a class="button button-dark" href="index.html">Voltar ao portal</a></div></header>
+<main class="admin-main container"><section id="login-panel" class="admin-login"><p class="eyebrow dark">Acesso protegido</p><h1>Entrar como administrador</h1><form id="admin-login-form" class="form-card"><label for="admin-user">Usuário</label><input id="admin-user" autocomplete="username" required><label for="admin-password">Senha</label><input id="admin-password" type="password" autocomplete="current-password" required><p id="login-message" class="form-message" role="alert"></p><button class="button button-gold full">Entrar</button></form></section>
+<section id="dashboard" hidden><div class="admin-dashboard-head"><div><p class="eyebrow dark">Banco de dados acadêmico</p><h1>Painel do administrador</h1></div><button id="logout-button" class="button button-dark">Sair</button></div><div id="initial-warning" class="admin-warning" hidden>Por segurança, altere a senha inicial antes de cadastrar dados.</div><section class="admin-panel score-mode-panel" aria-labelledby="score-mode-title"><div><p class="eyebrow dark">Formas de lançamento</p><h2 id="score-mode-title">Como deseja lançar as notas?</h2></div><div class="score-mode-buttons" role="group" aria-label="Modo de lançamento"><button class="score-mode-button active" type="button" data-score-mode="subject" aria-pressed="true">Por matéria individual</button><button class="score-mode-button" type="button" data-score-mode="student" aria-pressed="false">Por discente</button><button class="score-mode-button" type="button" data-score-mode="collective" aria-pressed="false">Coletivo por matéria</button></div></section>
+<div class="admin-grid compact-grid"><form id="password-form" class="admin-panel"><h2>Alterar senha</h2><label>Nova senha<input id="new-password" type="password" minlength="12" required></label><button class="button button-dark">Salvar senha</button><p class="panel-message"></p></form>
+<form id="student-form" class="admin-panel"><h2>Cadastrar ou atualizar discente</h2><label>Matrícula<input name="student_id" required></label><label>Nome<input name="name" required></label><label>Posto/graduação<input name="rank" value="Aluno CFS" required></label><label>Código individual<input name="access_code" type="password" minlength="6" required></label><button class="button button-gold">Salvar discente</button><p class="panel-message"></p></form>
+<form id="score-form" class="admin-panel score-panel"><h2 id="individual-score-title">Lançamento individual por matéria</h2><p id="individual-score-help" class="section-note">A matéria permanecerá selecionada após salvar; escolha o próximo discente.</p><label>Discente<select name="student_id" id="score-student" required><option value="">Selecione</option></select></label><label>Disciplina<select name="subject_id" id="score-subject" required><option value="">Selecione</option></select></label><div id="score-rule" class="score-rule">Selecione uma disciplina para visualizar a regra.</div><label id="status-label" hidden>Resultado<select name="status"><option value="">Selecione</option><option>Apto</option><option>Inapto</option></select></label><div class="score-fields"><label id="exam1-label"><span class="field-name">Avaliação Complementar (AVC)</span> <span id="exam1-max"></span><input name="exam1" type="number" min="0" step="0.01" inputmode="decimal"></label><label id="exam2-label"><span class="field-name">Avaliação Final (AVF)</span> <span id="exam2-max">(máx. 4)</span><input name="exam2" type="number" min="0" max="4" step="0.01" inputmode="decimal"></label><label id="work-label"><span class="field-name">Trabalho</span> <span id="work-max">(máx. 3)</span><input name="work" type="number" min="0" max="3" step="0.01" inputmode="decimal"></label></div><label>Observação individual<textarea name="observation" id="score-observation" rows="4" placeholder="Informações pertinentes que serão exibidas ao discente."></textarea></label><button class="button button-gold">Salvar resultado</button><p class="panel-message"></p></form></div>
+<form id="collective-score-form" class="admin-panel collective-score-panel" hidden><div class="panel-title"><div><h2>Lançamento coletivo por matéria</h2><p class="section-note">Preencha vários discentes e salve todos os resultados de uma só vez.</p></div><label>Disciplina<select id="collective-subject" required><option value="">Selecione</option></select></label></div><div id="collective-rule" class="score-rule">Selecione uma disciplina para montar a tabela.</div><div id="collective-score-table"></div><button id="collective-save-button" class="button button-gold" type="submit" disabled>Salvar lançamentos coletivos</button><p class="panel-message" role="status" aria-live="polite"></p></form>
+<section class="admin-panel pdf-score-import-panel" aria-labelledby="pdf-score-import-title"><div class="panel-title"><div><p class="eyebrow dark">Importação assistida</p><h2 id="pdf-score-import-title">Anexar notas de um discente por PDF</h2><p class="section-note">Escolha o discente e envie um PDF com texto selecionável. O sistema mostrará uma prévia antes de gravar qualquer nota.</p></div></div><form id="student-pdf-score-form" class="pdf-score-import-form"><label>Discente<select id="pdf-score-student" required><option value="">Selecione</option></select></label><label>Arquivo PDF<input id="student-score-pdf" type="file" accept="application/pdf,.pdf" required></label><button id="student-pdf-analyze-button" class="button button-gold" type="submit">Ler PDF e conferir notas</button><p class="panel-message" role="status" aria-live="polite"></p></form><div id="student-pdf-preview" hidden><div class="pdf-preview-head"><div><h3>Prévia das notas reconhecidas</h3><p>Confira e corrija os valores. Desmarque uma matéria para não importá-la.</p></div><button id="student-pdf-cancel" class="button button-outline-dark" type="button">Cancelar</button></div><div id="student-pdf-preview-table"></div><button id="student-pdf-confirm" class="button button-dark" type="button">Confirmar e salvar notas</button><p id="student-pdf-confirm-message" class="panel-message" role="status" aria-live="polite"></p></div></section>
+<form id="exam-form" class="admin-panel schedule-panel"><h2>Cadastrar data no calendário</h2><div class="schedule-grid"><label>Data<input name="date" type="date" required></label><label>Disciplina<select name="subject" id="calendar-subject" required></select></label><label>Horário<input name="time" placeholder="08h00" required></label><label>Local<input name="place" required></label><label>Tipo<select name="type" id="calendar-type"><option>Avaliação Complementar (AVC)</option><option>Avaliação Final (AVF)</option><option>Trabalho</option></select></label></div><button class="button button-gold">Cadastrar no calendário</button><p class="panel-message"></p></form>
+<form id="calendar-import-form" class="admin-panel schedule-panel"><h2>Importar calendário oficial em PDF</h2><p class="section-note">Selecione o PDF oficial da EFAS. O sistema lerá as provas reconhecidas e substituirá o calendário atual. Limite: 5 MB.</p><label for="calendar-pdf">Arquivo PDF<input id="calendar-pdf" name="calendar_pdf" type="file" accept="application/pdf,.pdf" required></label><button class="button button-gold" type="submit">Importar e atualizar calendário</button><p class="panel-message" role="status" aria-live="polite"></p></form>
+<section class="admin-panel data-panel"><div class="panel-title"><h2>Ranking completo do pelotão</h2><div class="panel-actions"><button id="pdf-report-button" class="button button-gold" type="button">Gerar relatório em PDF</button><button id="refresh-button" class="button button-dark" type="button">Atualizar</button></div></div><p class="section-note">Visível somente para o administrador. A média considera as disciplinas com algum lançamento.</p><p id="pdf-report-message" class="panel-message" role="status" aria-live="polite"></p><div id="ranking-data"></div></section>
+<section class="admin-panel data-panel"><h2>Notas lançadas</h2><div id="scores-data"></div></section>
+<dialog id="student-details-dialog" class="student-details-dialog" aria-labelledby="student-details-title"><div class="student-details-head"><div><p class="eyebrow dark">Consulta individual</p><h2 id="student-details-title">Notas do discente</h2></div><button id="student-details-close" class="dialog-close" type="button" aria-label="Fechar consulta">×</button></div><div id="student-details-content"></div><div class="student-details-actions"><button id="student-details-close-bottom" class="button button-dark" type="button">Fechar</button></div></dialog>
+<dialog id="admin-feedback-dialog" class="student-details-dialog admin-feedback-dialog" aria-labelledby="admin-feedback-title"><div class="student-details-head"><div><p id="admin-feedback-eyebrow" class="eyebrow dark">Aviso</p><h2 id="admin-feedback-title">Mensagem</h2></div><button id="admin-feedback-close" class="dialog-close" type="button" aria-label="Fechar aviso">×</button></div><div id="admin-feedback-content" class="admin-feedback-content"></div><div class="student-details-actions"><button id="admin-feedback-close-bottom" class="button button-dark" type="button">Entendi</button></div></dialog>
+</section></main><script src="admin.js?v=20260723-12" defer></script></body></html>
