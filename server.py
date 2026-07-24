@@ -719,6 +719,12 @@ class Handler(SimpleHTTPRequestHandler):
                     sid=str(data.get("student_id","")).strip(); code=str(data.get("access_code","")).strip()
                     if not sid or not data.get("name") or len(code)<6:raise ValueError("Preencha matrícula, nome e código com pelo menos 6 caracteres.")
                     salt,digest=password_hash(code);db.execute("INSERT INTO students(id,name,rank,salt,access_hash,observation,must_change) VALUES(?,?,?,?,?,'',1) ON CONFLICT(id) DO UPDATE SET name=excluded.name,rank=excluded.rank,salt=excluded.salt,access_hash=excluded.access_hash,must_change=1",(sid,str(data.get("name","")).strip(),str(data.get("rank","")).strip(),salt,digest))
+                elif self.path=="/api/admin/observation/delete":
+                    sid=str(data.get("student_id","")).strip()
+                    if not sid or not db.execute("SELECT 1 FROM students WHERE id=?",(sid,)).fetchone():raise ValueError("Selecione um discente valido.")
+                    db.execute("UPDATE students SET observation='' WHERE id=?",(sid,))
+                    db.commit()
+                    self.output({"ok":True});return
                 elif self.path=="/api/admin/score":
                     sid=str(data.get("student_id","")).strip();subject_id=int(data.get("subject_id"));sub=db.execute("SELECT exam_count,grading_mode FROM subjects WHERE id=?",(subject_id,)).fetchone()
                     if not db.execute("SELECT 1 FROM students WHERE id=?",(sid,)).fetchone() or not sub:raise ValueError("Discente ou disciplina inválida.")
@@ -738,7 +744,8 @@ class Handler(SimpleHTTPRequestHandler):
                     elif sub[0]==1: exam1=None;exam2=number("exam2",7);work=number("work",3)
                     else: exam1=number("exam1",3);exam2=number("exam2",4);work=number("work",3)
                     save_score(db,sid,subject_id,exam1,exam2,work,status)
-                    db.execute("UPDATE students SET observation=? WHERE id=?",(str(data.get("observation","")).strip(),sid))
+                    observation=str(data.get("observation","")).strip()
+                    if observation:db.execute("UPDATE students SET observation=? WHERE id=?",(observation,sid))
                     db.commit()
                     if status is not None or exam1 is not None or exam2 is not None or work is not None:
                         confirmed=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
