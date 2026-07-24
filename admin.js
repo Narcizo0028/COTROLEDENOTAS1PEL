@@ -87,38 +87,26 @@ async function confirmPdfImport(event){
   if(!entries.length){message.textContent='Selecione pelo menos uma matéria para importar.';showAdminFeedback({title:'Nenhuma matéria marcada',eyebrow:'Atenção',message:'Marque pelo menos uma disciplina na prévia para salvar.',userAction:'Marque as caixas das matérias desejadas e clique novamente em salvar.',tone:'warning'});return}
   button.dataset.saving='true';button.disabled=true;button.textContent='Salvando...';message.textContent='Enviando e conferindo as notas no banco de dados...';
   try{
-    const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'apply',student_id,entries})});
-    if(!result.ok||!Number(result.saved)){
-      const failure=new Error('O servidor não confirmou a gravação das notas.');
-      failure.logs=result.logs||[];failure.userAction=result.user_action||'Tente salvar novamente. Se o problema continuar, use o lançamento manual.';
-      throw failure;
+    const student=cache.students.find(item=>String(item.id)===String(student_id));
+    let saved=0;
+    for(const entry of entries){
+      await api('/api/admin/score',{
+        method:'POST',
+        body:JSON.stringify({
+          student_id,
+          ...entry,
+          observation:student?.observation||''
+        })
+      });
+      saved+=1;
+      message.textContent=`Salvando notas... ${saved} de ${entries.length} disciplina(s).`;
     }
-    const confirmed=Array.isArray(result.confirmed)?result.confirmed:[];
-    const confirmedIds=new Set(confirmed.map(item=>String(item.subject_id)));
-    const missing=entries.filter(entry=>!confirmedIds.has(String(entry.subject_id)));
-    if(missing.length){
-      const failure=new Error('Algumas disciplinas não apareceram na confirmação do salvamento.');
-      failure.logs=[...(result.logs||[]),{level:'error',message:`Disciplinas sem confirmação: ${missing.map(item=>item.subject_id).join(', ')}`}];
-      failure.userAction=result.user_action||'Clique em Atualizar na tela e confira o ranking. Se faltar nota, salve de novo ou use o lançamento manual.';
-      throw failure;
-    }
-    const success=`${result.saved} disciplina(s) salva(s) e conferida(s).`;
+    const success=`${saved} disciplina(s) salva(s) pela mesma rotina do lançamento manual.`;
     message.textContent=success;formMessage.textContent=`Notas salvas para o discente selecionado. ${success}`;
     button.textContent='Importação concluída';pdfImportStudentId=student_id;
     $('#student-score-pdf').value='';
     try{await loadData();$('#pdf-score-student').value=student_id}
     catch{formMessage.textContent=`${success} A tela não conseguiu atualizar automaticamente; clique em Atualizar para conferir.`}
-    const warningLogs=(result.logs||[]).filter(item=>['warning','error'].includes(String(item.level||'').toLowerCase()));
-    if(result.user_action||warningLogs.length){
-      showAdminFeedback({
-        title:result.user_action?'Notas salvas, com aviso':'Notas salvas com avisos',
-        eyebrow:'Atenção',
-        message:success,
-        userAction:result.user_action||'',
-        logs:result.logs||[],
-        tone:'warning'
-      });
-    }
     $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'center'});
   }catch(error){
     const detail=error.message==='Rota inexistente.'?'O servidor ainda não possui a atualização da importação por PDF. Atualize também o backend no Render.':(error.message||'Não foi possível salvar as notas.');
