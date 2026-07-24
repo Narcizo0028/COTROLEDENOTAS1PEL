@@ -1,8 +1,5 @@
 const $=selector=>document.querySelector(selector),esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=value=>Number(value).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});let cache={subjects:[],students:[],scores:[]},scoreMode='subject',pdfImportStudentId='';
-async function api(path,options={}){const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}),data=await response.json().catch(()=>({}));if(!response.ok){const error=new Error(data.error||'Não foi possível concluir a operação.');error.logs=Array.isArray(data.logs)?data.logs:[];error.userAction=data.user_action||'';throw error}return data}
-function closeAdminFeedback(){const dialog=$('#admin-feedback-dialog');if(!dialog)return;if(typeof dialog.close==='function')dialog.close();else dialog.removeAttribute('open')}
-function showAdminFeedback({title='Aviso',eyebrow='Aviso',message='',userAction='',logs=[],tone='info'}={}){const dialog=$('#admin-feedback-dialog'),content=$('#admin-feedback-content');if(!dialog||!content){window.alert([message,userAction].filter(Boolean).join('\n\n'));return}$('#admin-feedback-eyebrow').textContent=eyebrow;$('#admin-feedback-title').textContent=title;const logItems=(logs||[]).map(item=>{const level=String(item.level||'info').toLowerCase();return`<li class="log-${esc(level)}"><span class="log-level">${esc(level)}</span><div><div>${esc(item.message||'')}</div>${item.at?`<div class="log-meta">${esc(item.at)}</div>`:''}</div></li>`}).join('');content.innerHTML=`${message?`<p>${esc(message)}</p>`:''}${userAction?`<div class="admin-feedback-action"><strong>O que você deve fazer</strong><span>${esc(userAction)}</span></div>`:''}${logItems?`<p><strong>Detalhes para ajuste</strong></p><ul class="admin-feedback-logs">${logItems}</ul>`:''}`;dialog.dataset.tone=tone;if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')}
-$('#admin-feedback-close')?.addEventListener('click',closeAdminFeedback);$('#admin-feedback-close-bottom')?.addEventListener('click',closeAdminFeedback);$('#admin-feedback-dialog')?.addEventListener('click',event=>{if(event.target===$('#admin-feedback-dialog'))closeAdminFeedback()});
+async function api(path,options={}){const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}),data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Não foi possível concluir a operação.');return data}
 function dashboard(user){$('#login-panel').hidden=true;$('#dashboard').hidden=false;$('#initial-warning').hidden=!user.must_change_password;loadData()}
 async function check(){try{dashboard(await api('/api/admin/session'))}catch{$('#login-panel').hidden=false;$('#dashboard').hidden=true}}
 $('#admin-login-form').addEventListener('submit',async e=>{e.preventDefault();try{dashboard(await api('/api/admin/login',{method:'POST',body:JSON.stringify({username:$('#admin-user').value.trim(),password:$('#admin-password').value})}))}catch(error){$('#login-message').textContent=error.message}});
@@ -27,45 +24,29 @@ $('#refresh-button').addEventListener('click',loadData);$('#logout-button').addE
 document.addEventListener('click',event=>{const button=event.target.closest('[data-student-details]');if(button)openStudentDetails(button.dataset.studentDetails)});$('#student-details-close').addEventListener('click',closeStudentDetails);$('#student-details-close-bottom').addEventListener('click',closeStudentDetails);$('#student-details-dialog').addEventListener('click',event=>{if(event.target===$('#student-details-dialog'))closeStudentDetails()});
 $('#pdf-report-button').addEventListener('click',async e=>{const button=e.currentTarget,message=$('#pdf-report-message');button.disabled=true;message.textContent='Gerando relatório...';try{const response=await fetch('/api/admin/report.pdf');if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||'Não foi possível gerar o relatório.')}const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`relatorio-notas-${new Date().toISOString().slice(0,10)}.pdf`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);message.textContent='Relatório gerado com sucesso.'}catch(error){message.textContent=error.message}finally{button.disabled=false}});
 $('#calendar-import-form').addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,file=$('#calendar-pdf').files[0],button=form.querySelector('button'),message=form.querySelector('.panel-message');if(!file)return;if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';return}button.disabled=true;message.textContent='Lendo e validando o calendário...';try{const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)}),result=await api('/api/admin/calendar/import',{method:'POST',body:JSON.stringify({filename:file.name,pdf_base64})});message.textContent=`Calendário atualizado: ${result.imported} avaliações importadas.`;form.reset();await loadData()}catch(error){message.textContent=error.message}finally{button.disabled=false}});
-$('#collective-score-form').addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=$('#collective-save-button'),message=form.querySelector('.panel-message'),subject_id=$('#collective-subject').value,rows=[...$('#collective-score-table').querySelectorAll('tbody tr')],entries=rows.map(row=>{const entry={student_id:row.dataset.studentId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry}),hasValues=entries.some(entry=>Object.entries(entry).some(([key,value])=>key!=='student_id'&&value!=='')),hasClears=entries.some(entry=>{const previous=cache.scores.find(score=>String(score.subject_id)===String(subject_id)&&String(score.student_id)===String(entry.student_id));if(!previous)return false;const empty=!Object.entries(entry).some(([key,value])=>key!=='student_id'&&value!=='');return empty});if(!hasValues&&!hasClears){message.textContent='Preencha pelo menos um resultado antes de salvar.';return}const payload=entries.filter(entry=>{const previous=cache.scores.find(score=>String(score.subject_id)===String(subject_id)&&String(score.student_id)===String(entry.student_id));const hasValue=Object.entries(entry).some(([key,value])=>key!=='student_id'&&value!=='');return hasValue||previous});button.disabled=true;message.textContent='Salvando lançamentos coletivos...';try{const result=await api('/api/admin/scores/bulk',{method:'POST',body:JSON.stringify({subject_id,entries:payload})});const cleared=Number(result.cleared||0);message.textContent=cleared?`${result.saved} salvos e ${cleared} limpos com sucesso.`:`${result.saved} resultados salvos com sucesso.`;await loadData();renderCollectiveScores()}catch(error){message.textContent=error.message}finally{button.disabled=false}});
+$('#collective-score-form').addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=$('#collective-save-button'),message=form.querySelector('.panel-message'),subject_id=$('#collective-subject').value,entries=[...$('#collective-score-table').querySelectorAll('tbody tr')].map(row=>{const entry={student_id:row.dataset.studentId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry}).filter(entry=>Object.entries(entry).some(([key,value])=>key!=='student_id'&&value!==''));if(!entries.length){message.textContent='Preencha pelo menos um resultado antes de salvar.';return}button.disabled=true;message.textContent='Salvando lançamentos coletivos...';try{const result=await api('/api/admin/scores/bulk',{method:'POST',body:JSON.stringify({subject_id,entries})});message.textContent=`${result.saved} resultados salvos com sucesso.`;await loadData();renderCollectiveScores()}catch(error){message.textContent=error.message}finally{button.disabled=false}});
 
 // Mantém a lista de discentes da importação sincronizada com o cadastro principal.
 new MutationObserver(()=>{const select=$('#pdf-score-student'),current=pdfImportStudentId||select.value;select.innerHTML=$('#score-student').innerHTML;select.value=current}).observe($('#score-student'),{childList:true});
-function renderPdfScorePreview(entries){
-  const container=$('#student-pdf-preview-table'),confirmButton=$('#student-pdf-confirm');
-  confirmButton.disabled=false;confirmButton.textContent='Confirmar e salvar notas';$('#student-pdf-confirm-message').textContent='';
-  container.innerHTML=`<div class="table-wrap"><table class="grade-table pdf-score-preview-table"><thead><tr><th>Importar</th><th>Disciplina</th><th>AVC / 1º TAF</th><th>AVF / 2º TAF</th><th>Trabalho / 3º TAF</th><th>Resultado</th></tr></thead><tbody>${entries.map(entry=>{
-    const subject=cache.subjects.find(item=>String(item.id)===String(entry.subject_id));
-    const previous=cache.scores.find(item=>String(item.student_id)===String(pdfImportStudentId)&&String(item.subject_id)===String(entry.subject_id));
-    const apt=subject?.grading_mode==='apt',taf=subject?.grading_mode==='taf',single=subject?.exam_count===1&&subject?.grading_mode==='normal';
-    const valueOf=(field)=>entry[field]??previous?.[field]??'';
-    const scoreInput=(field,max,disabled=false)=>disabled?'—':`<input data-field="${field}" type="number" min="0" max="${max}" step="0.01" inputmode="decimal" value="${valueOf(field)}" aria-label="${field} de ${esc(entry.subject)}">`;
-    return`<tr data-subject-id="${entry.subject_id}"><td><input class="pdf-import-check" type="checkbox" checked aria-label="Importar ${esc(entry.subject)}"></td><td><strong>${esc(entry.subject)}</strong><small class="table-sub">Campos vazios no PDF mantêm a nota já lançada</small></td><td>${apt?'—':scoreInput('exam1',3,single)}</td><td>${apt?'—':scoreInput('exam2',taf?3:single?7:4)}</td><td>${apt?'—':scoreInput('work',taf?4:3)}</td><td>${apt?`<select data-field="status" aria-label="Resultado de ${esc(entry.subject)}"><option value="">Selecione</option><option${valueOf('status')==='Apto'?' selected':''}>Apto</option><option${valueOf('status')==='Inapto'?' selected':''}>Inapto</option></select>`:'Pontuação'}</td></tr>`;
-  }).join('')}</tbody></table></div>`;
-  $('#student-pdf-preview').hidden=false;
-}
+function renderPdfScorePreview(entries){const container=$('#student-pdf-preview-table'),confirmButton=$('#student-pdf-confirm');confirmButton.disabled=false;confirmButton.textContent='Confirmar e salvar notas';$('#student-pdf-confirm-message').textContent='';container.innerHTML=`<div class="table-wrap"><table class="grade-table pdf-score-preview-table"><thead><tr><th>Importar</th><th>Disciplina</th><th>AVC / 1º TAF</th><th>AVF / 2º TAF</th><th>Trabalho / 3º TAF</th><th>Resultado</th></tr></thead><tbody>${entries.map(entry=>{const subject=cache.subjects.find(item=>String(item.id)===String(entry.subject_id)),apt=subject?.grading_mode==='apt',taf=subject?.grading_mode==='taf',single=subject?.exam_count===1&&subject?.grading_mode==='normal';const scoreInput=(field,value,max,disabled=false)=>disabled?'—':`<input data-field="${field}" type="number" min="0" max="${max}" step="0.01" inputmode="decimal" value="${value??''}" aria-label="${field} de ${esc(entry.subject)}">`;return`<tr data-subject-id="${entry.subject_id}"><td><input class="pdf-import-check" type="checkbox" checked aria-label="Importar ${esc(entry.subject)}"></td><td><strong>${esc(entry.subject)}</strong><small class="table-sub">Confira os valores antes de salvar</small></td><td>${apt?'—':scoreInput('exam1',entry.exam1,3,single)}</td><td>${apt?'—':scoreInput('exam2',entry.exam2,taf?3:single?7:4)}</td><td>${apt?'—':scoreInput('work',entry.work,taf?4:3)}</td><td>${apt?`<select data-field="status" aria-label="Resultado de ${esc(entry.subject)}"><option value="">Selecione</option><option${entry.status==='Apto'?' selected':''}>Apto</option><option${entry.status==='Inapto'?' selected':''}>Inapto</option></select>`:'Pontuação'}</td></tr>`}).join('')}</tbody></table></div>`;$('#student-pdf-preview').hidden=false}
 async function analyzePdfImport(event){
   event.preventDefault();
   const form=$('#student-pdf-score-form'),file=$('#student-score-pdf').files[0],student_id=$('#pdf-score-student').value;
   const button=$('#student-pdf-analyze-button'),message=form.querySelector('.panel-message');
-  if(!student_id){message.textContent='Selecione o discente antes de importar o PDF.';$('#pdf-score-student').focus();showAdminFeedback({title:'Falta escolher o discente',eyebrow:'Atenção',message:'Selecione o discente antes de ler o PDF.',userAction:'Escolha o nome na lista e tente novamente.',tone:'warning'});return}
-  if(!file){message.textContent='Selecione o arquivo PDF de notas.';$('#student-score-pdf').focus();showAdminFeedback({title:'Falta o arquivo PDF',eyebrow:'Atenção',message:'Selecione o arquivo PDF com as notas.',userAction:'Clique em escolher arquivo, selecione o PDF e tente novamente.',tone:'warning'});return}
-  if(file.type&&file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf')){message.textContent='O arquivo selecionado precisa estar no formato PDF.';showAdminFeedback({title:'Arquivo inválido',eyebrow:'Atenção',message:'O arquivo precisa ser um PDF.',userAction:'Salve ou exporte o documento em PDF e envie novamente.',tone:'warning'});return}
-  if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';showAdminFeedback({title:'Arquivo muito grande',eyebrow:'Atenção',message:'O PDF ultrapassa o limite de 5 MB.',userAction:'Reduza o tamanho do arquivo ou divida o conteúdo e tente de novo.',tone:'warning'});return}
+  if(!student_id){message.textContent='Selecione o discente antes de importar o PDF.';$('#pdf-score-student').focus();return}
+  if(!file){message.textContent='Selecione o arquivo PDF de notas.';$('#student-score-pdf').focus();return}
+  if(file.type&&file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf')){message.textContent='O arquivo selecionado precisa estar no formato PDF.';return}
+  if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';return}
   $('#student-pdf-preview').hidden=true;$('#student-pdf-confirm-message').textContent='';
   button.disabled=true;button.textContent='Lendo o PDF...';message.textContent='Lendo as disciplinas e notas do PDF. Elas serão vinculadas ao discente selecionado. Aguarde...';
   try{
     const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)});
     const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'preview',student_id,pdf_base64})});
-    pdfImportStudentId=student_id;renderPdfScorePreview(result.entries);
+    pdfImportStudentId=student_id;renderPdfScorePreview(result.entries);$('#student-pdf-confirm').textContent='CONFIRMAR E SALVAR NOTA';
     message.textContent=`${result.entries.length} disciplina(s) reconhecida(s) para ${result.student.name} (matrícula ${student_id}). Confira a prévia antes de confirmar.`;
-    if(result.user_action||(result.logs||[]).some(item=>String(item.level).toLowerCase()==='warning')){
-      showAdminFeedback({title:'Prévia pronta, com avisos',eyebrow:'Conferência',message:`Foram reconhecidas ${result.entries.length} disciplina(s). Revise a prévia antes de salvar.`,userAction:result.user_action||'',logs:result.logs||[],tone:'warning'});
-    }
     $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'start'});
   }catch(error){
     message.textContent=error.message||'Não foi possível importar o PDF.';$('#student-pdf-preview').hidden=true;
-    showAdminFeedback({title:'Não foi possível ler o PDF',eyebrow:'Erro na importação',message:error.message||'Não foi possível importar o PDF.',userAction:error.userAction||'Confira o arquivo e o discente selecionado, depois tente novamente.',logs:error.logs||[{level:'error',message:error.message||'Falha na leitura do PDF.'}],tone:'error'});
   }finally{
     button.disabled=false;button.textContent='Ler PDF e conferir notas';
   }
@@ -82,53 +63,40 @@ async function confirmPdfImport(event){
   if(button.dataset.saving==='true')return;
   const student_id=pdfImportStudentId||$('#pdf-score-student').value;
   const entries=[...$('#student-pdf-preview-table tbody tr')]
-    .filter(row=>row.querySelector('.pdf-import-check')?.checked)
+    .filter(row=>row.querySelector('.pdf-import-check').checked)
     .map(row=>{const entry={subject_id:row.dataset.subjectId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry});
-  if(!student_id){message.textContent='Selecione novamente o discente antes de salvar.';showAdminFeedback({title:'Discente não identificado',eyebrow:'Atenção',message:'Não foi possível identificar o discente desta importação.',userAction:'Selecione o discente, leia o PDF outra vez e confirme o salvamento.',tone:'warning'});return}
-  if(!entries.length){message.textContent='Selecione pelo menos uma matéria para importar.';showAdminFeedback({title:'Nenhuma matéria marcada',eyebrow:'Atenção',message:'Marque pelo menos uma disciplina na prévia para salvar.',userAction:'Marque as caixas das matérias desejadas e clique novamente em salvar.',tone:'warning'});return}
+  if(!student_id){message.textContent='Selecione novamente o discente antes de salvar.';return}
+  if(!entries.length){message.textContent='Selecione pelo menos uma matéria para importar.';return}
   button.dataset.saving='true';button.disabled=true;button.textContent='Salvando...';message.textContent='Enviando e conferindo as notas no banco de dados...';
   try{
-    const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'apply',student_id,entries})});
-    if(!result.ok||!Number(result.saved)){
-      const failure=new Error('O servidor não confirmou a gravação das notas.');
-      failure.logs=result.logs||[];failure.userAction=result.user_action||'Tente salvar novamente. Se o problema continuar, use o lançamento manual.';
-      throw failure;
-    }
-    const confirmed=Array.isArray(result.confirmed)?result.confirmed:[];
-    const confirmedIds=new Set(confirmed.map(item=>String(item.subject_id)));
-    const missing=entries.filter(entry=>!confirmedIds.has(String(entry.subject_id)));
-    if(missing.length){
-      const failure=new Error('Algumas disciplinas não apareceram na confirmação do salvamento.');
-      failure.logs=[...(result.logs||[]),{level:'error',message:`Disciplinas sem confirmação: ${missing.map(item=>item.subject_id).join(', ')}`}];
-      failure.userAction=result.user_action||'Clique em Atualizar na tela e confira o ranking. Se faltar nota, salve de novo ou use o lançamento manual.';
-      throw failure;
-    }
-    const success=`${result.saved} disciplina(s) salva(s) e conferida(s).`;
+    const result=await api('/api/admin/student-scores/import',{
+      method:'POST',
+      body:JSON.stringify({action:'apply',student_id,entries})
+    });
+    if(!result.ok||Number(result.saved)!==entries.length||!Array.isArray(result.confirmed))throw new Error('O servidor não confirmou todas as notas importadas.');
+    const verification=await api('/api/admin/data');
+    const matches=entries.every(entry=>{
+      const saved=verification.scores.find(score=>String(score.student_id)===String(student_id)&&String(score.subject_id)===String(entry.subject_id));
+      if(!saved)return false;
+      return ['exam1','exam2','work','status'].every(field=>{
+        if(!(field in entry)||entry[field]==='')return true;
+        if(field==='status')return String(saved[field]||'')===String(entry[field]);
+        return Math.abs(Number(saved[field])-Number(String(entry[field]).replace(',','.')))<0.0001;
+      });
+    });
+    if(!matches)throw new Error('A API respondeu, mas a conferência encontrou uma nota diferente no banco de dados.');
+    const success=`${result.saved} disciplina(s) salva(s) e conferida(s) no banco de dados.`;
     message.textContent=success;formMessage.textContent=`Notas salvas para o discente selecionado. ${success}`;
     button.textContent='Importação concluída';pdfImportStudentId=student_id;
     $('#student-score-pdf').value='';
     try{await loadData();$('#pdf-score-student').value=student_id}
     catch{formMessage.textContent=`${success} A tela não conseguiu atualizar automaticamente; clique em Atualizar para conferir.`}
-    const warningLogs=(result.logs||[]).filter(item=>['warning','error'].includes(String(item.level||'').toLowerCase()));
-    if(result.user_action||warningLogs.length){
-      showAdminFeedback({
-        title:result.user_action?'Notas salvas, com aviso':'Notas salvas com avisos',
-        eyebrow:'Atenção',
-        message:success,
-        userAction:result.user_action||'',
-        logs:result.logs||[],
-        tone:'warning'
-      });
-    }
     $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'center'});
   }catch(error){
-    const detail=error.message==='Rota inexistente.'?'O servidor ainda não possui a atualização da importação por PDF. Atualize também o backend no Render.':(error.message||'Não foi possível salvar as notas.');
-    const userAction=error.userAction||(error.message==='Rota inexistente.'?'Peça para publicar o painel e o servidor juntos e depois atualize a página com Ctrl+F5.':'Confira os detalhes abaixo, corrija o que for necessário e tente salvar novamente.');
+    const detail=error.message==='Rota inexistente.'?'O servidor ainda não possui a atualização da importação por PDF. Atualize também o backend no Render.':error.message;
     message.textContent=detail;formMessage.textContent=detail;button.textContent='Tentar salvar novamente';
-    showAdminFeedback({title:'As notas não foram confirmadas',eyebrow:'Erro ao salvar',message:detail,userAction,logs:error.logs||[{level:'error',message:detail}],tone:'error'});
   }finally{
     button.dataset.saving='false';button.disabled=false;
   }
 }
-// Delegação mantém o clique ativo mesmo se a prévia for reconstruída.
-document.addEventListener('click',event=>{if(event.target.closest('#student-pdf-confirm'))confirmPdfImport(event)});
+$('#student-pdf-confirm').addEventListener('click',confirmPdfImport);

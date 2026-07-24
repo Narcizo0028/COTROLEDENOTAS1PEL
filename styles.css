@@ -152,20 +152,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .student-details-actions { display:flex; justify-content:flex-end; padding:18px 28px 24px; border-top:1px solid var(--line); }
 @media (max-width:700px) { .student-details-summary { grid-template-columns:repeat(3,1fr); }.student-details-summary > p { grid-column:1 / -1; }.student-details-dialog { max-height:94vh; }.student-details-head,#student-details-content,.student-details-actions { padding-left:18px; padding-right:18px; } }
 
-.admin-feedback-dialog { width:min(720px,calc(100% - 28px)); }
-.admin-feedback-content { padding:8px 28px 8px; }
-.admin-feedback-content > p { margin:0 0 14px; line-height:1.55; }
-.admin-feedback-action { margin:0 0 16px; padding:14px 16px; background:#f6f3e9; border-left:4px solid var(--gold); border-radius:6px; }
-.admin-feedback-action strong { display:block; margin-bottom:6px; }
-.admin-feedback-logs { margin:0 0 8px; padding:0; list-style:none; max-height:240px; overflow:auto; border:1px solid var(--line); border-radius:8px; background:#faf9f5; }
-.admin-feedback-logs li { display:grid; grid-template-columns:72px 1fr; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); font-size:.92rem; }
-.admin-feedback-logs li:last-child { border-bottom:0; }
-.admin-feedback-logs .log-level { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
-.admin-feedback-logs .log-error .log-level { color:#8a1f11; }
-.admin-feedback-logs .log-warning .log-level { color:#8a5a11; }
-.admin-feedback-logs .log-info .log-level { color:#3d5a40; }
-.admin-feedback-logs .log-meta { color:var(--muted); font-size:.75rem; margin-top:2px; }
-
 /* Importação assistida de notas por PDF */
 .pdf-score-import-panel { margin:24px 0; border-top-color:var(--blue-gray); }
 .pdf-score-import-form { display:grid; grid-template-columns:minmax(220px,1fr) minmax(260px,1fr) auto; gap:14px; align-items:end; margin-top:22px; }
@@ -182,80 +168,3 @@ button, a { -webkit-tap-highlight-color: transparent; }
 #student-pdf-confirm { margin-top:18px; }
 @media (max-width:820px) { .pdf-score-import-form { grid-template-columns:1fr 1fr; }.pdf-score-import-form .button { grid-column:1 / -1; }.pdf-preview-head { flex-direction:column; } }
 @media (max-width:560px) { .pdf-score-import-form { grid-template-columns:1fr; }.pdf-score-import-form .button { grid-column:auto; }.pdf-preview-head .button { width:100%; } }
-
-.student-entry-panel {
-  margin-top: 24px;
-  padding: clamp(22px, 3.5vw, 34px);
-  color: var(--text);
-  background: #fff;
-  border: 1px solid #d8cfb7;
-  border-top: 5px solid var(--blue-gray);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-.student-entry-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  align-items: flex-end;
-  margin-bottom: 18px;
-}
-.student-entry-head h3 {
-  margin: 4px 0 8px;
-  font: 500 clamp(1.4rem, 2vw, 1.9rem)/1.15 Georgia, serif;
-}
-.student-entry-head p { margin: 0; color: var(--muted); max-width: 54ch; }
-.student-entry-hint {
-  margin: 0;
-  padding: 10px 12px;
-  color: #40391f;
-  background: #f4edda;
-  border-left: 3px solid var(--gold);
-  font-size: .82rem;
-  max-width: 280px;
-}
-.student-entry-grid td { vertical-align: top; }
-.entry-field {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  font-size: .74rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-.entry-field small { font-weight: 600; text-transform: none; letter-spacing: 0; color: #8a8578; }
-.entry-field input {
-  width: 100%;
-  min-width: 96px;
-  height: 44px;
-  padding: 0 10px;
-  border: 1px solid #bdb9ad;
-  border-radius: 6px;
-  font-size: .95rem;
-  font-weight: 600;
-  color: var(--text);
-  text-transform: none;
-  letter-spacing: 0;
-}
-.entry-field input:focus { border-color: #8b712d; outline: none; box-shadow: 0 0 0 3px rgba(165,148,97,.18); }
-.entry-empty { color: var(--muted); text-align: center; }
-.student-entry-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 20px;
-}
-.student-entry-actions .form-message {
-  margin: 0;
-  color: var(--success);
-  min-height: 0;
-}
-@media (max-width: 720px) {
-  .student-entry-head { flex-direction: column; align-items: stretch; }
-  .student-entry-hint { max-width: none; }
-  .student-entry-actions .button { width: 100%; }
-}
-
