@@ -1,6 +1,7 @@
 let exams=[];
 let studentSession=null;
-const VIEW_IDS=new Set(['inicio','calendario','boletim','lancamento','senha']);
+const VIEW_IDS=new Set(['calendario','boletim','lancamento','senha']);
+const DEFAULT_VIEW='boletim';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const menuButton=document.querySelector('.menu-toggle');
@@ -23,8 +24,6 @@ const showPasswords=document.querySelector('#show-student-passwords');
 const gradesGuests=[...document.querySelectorAll('.grades-guest')];
 const gradesAutheds=[...document.querySelectorAll('.grades-authed')];
 const lancamentoEmpty=document.querySelector('#lancamento-empty');
-const homeLoginPanel=document.querySelector('#home-login-panel');
-const homeSessionPanel=document.querySelector('#home-session-panel');
 const studentLogoutButton=document.querySelector('#student-logout-button');
 const views=[...document.querySelectorAll('[data-view]')];
 
@@ -59,8 +58,6 @@ function syncStudentUi(){
   const loggedIn=Boolean(studentSession);
   gradesGuests.forEach(el=>{el.hidden=loggedIn;});
   gradesAutheds.forEach(el=>{el.hidden=!loggedIn;});
-  if(homeLoginPanel)homeLoginPanel.hidden=loggedIn;
-  if(homeSessionPanel)homeSessionPanel.hidden=!loggedIn;
   if(studentLogoutButton)studentLogoutButton.hidden=!loggedIn;
   document.body.classList.toggle('student-logged-in',loggedIn);
   if(lancamentoEmpty&&studentEntryPanel){
@@ -72,7 +69,7 @@ function syncStudentUi(){
 const STUDENT_VIEWS=new Set(['boletim','lancamento','senha']);
 
 function showView(id,{updateHash=true}={}){
-  const viewId=VIEW_IDS.has(id)?id:'inicio';
+  const viewId=VIEW_IDS.has(id)?id:DEFAULT_VIEW;
   views.forEach(view=>{
     const active=view.dataset.view===viewId;
     view.classList.toggle('is-active',active);
@@ -91,9 +88,9 @@ function showView(id,{updateHash=true}={}){
 }
 
 function viewFromHash(){
-  const raw=(location.hash||'#inicio').slice(1);
-  const id=raw==='notas'?'boletim':raw;
-  return VIEW_IDS.has(id)?id:'inicio';
+  const raw=(location.hash||`#${DEFAULT_VIEW}`).slice(1);
+  const mapped=raw==='notas'||raw==='inicio'?DEFAULT_VIEW:raw;
+  return VIEW_IDS.has(mapped)?mapped:DEFAULT_VIEW;
 }
 
 document.addEventListener('click',e=>{
@@ -363,7 +360,7 @@ studentLogoutButton.addEventListener('click',async()=>{
     await fetch('/api/student/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   }finally{
     clearStudentSessionUi('Sessão encerrada com segurança.');
-    showView('inicio');
+    showView(DEFAULT_VIEW);
   }
 });
 

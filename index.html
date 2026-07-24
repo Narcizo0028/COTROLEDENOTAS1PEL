@@ -6,7 +6,7 @@
   <meta name="description" content="Portal institucional para consulta de calendário de provas e notas finais do CFS — 1º Pelotão.">
   <meta name="theme-color" content="#1d1c18">
   <title>Controle de Notas | CFS — 1º Pelotão</title>
-  <link rel="stylesheet" href="styles.css?v=20260724-30">
+  <link rel="stylesheet" href="styles.css?v=20260724-31">
 </head>
 <body class="portal-app">
   <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -14,20 +14,25 @@
   <header class="site-header" id="topo">
     <div class="topbar">CFS / 1º Pelotão</div>
     <div class="nav-wrap container">
-      <a class="brand" href="#inicio" data-nav="inicio" aria-label="Página inicial do CFS, 1º Pelotão">
+      <a class="brand" href="#boletim" data-nav="boletim" aria-label="Página inicial do CFS, 1º Pelotão">
         <img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58">
         <span><strong>Controle de Notas</strong><small>CFS • 1º Pelotão</small></span>
       </a>
       <div class="header-actions">
-        <button id="student-logout-button" class="button button-dark student-logout-button" type="button" hidden>Sair</button>
+        <button id="student-logout-button" class="student-logout-button" type="button" hidden aria-label="Sair da área do aluno">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </button>
         <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="menu-principal" aria-label="Abrir menu">
           <span></span><span></span><span></span>
         </button>
       </div>
       <nav id="menu-principal" class="main-nav" aria-label="Navegação principal">
-        <a href="#inicio" data-nav="inicio" class="active">Início</a>
+        <a href="#boletim" data-nav="boletim" class="active">Início</a>
         <a href="#calendario" data-nav="calendario">Calendário</a>
-        <a href="#boletim" data-nav="boletim">Boletim</a>
         <a href="#lancamento" data-nav="lancamento">Lançar notas</a>
         <a href="#senha" data-nav="senha">Alterar senha</a>
         <a href="admin.html" class="nav-admin">Administração</a>
@@ -37,36 +42,28 @@
   <div id="nav-backdrop" class="nav-backdrop" hidden></div>
 
   <main id="conteudo" class="app-main">
-    <section class="view view-home is-active" id="inicio" data-view="inicio" aria-labelledby="hero-title">
-      <div class="hero home-hero">
-        <div class="hero-pattern" aria-hidden="true"></div>
-        <div class="container home-grid">
-          <div class="hero-copy">
-            <h1 id="hero-title">Controle de Notas</h1>
-            <p class="hero-text">CFS — 1º Pelotão</p>
-          </div>
+    <section class="view grade-section is-active" id="boletim" data-view="boletim" aria-labelledby="boletim-title">
+      <div class="container">
+        <div id="boletim-guest" class="grades-guest">
+          <h2 id="boletim-title" class="view-title">Início</h2>
           <div class="form-card home-login-card">
-            <div id="home-login-panel">
-              <h2 class="login-card-title">Entrar</h2>
-              <form id="grade-form" novalidate>
-                <label for="student-id">Matrícula</label>
-                <input id="student-id" name="student-id" inputmode="numeric" autocomplete="username" placeholder="Ex.: 2026001" required>
-                <label for="access-code">Código de acesso</label>
-                <div class="password-wrap">
-                  <input id="access-code" name="access-code" type="password" autocomplete="current-password" placeholder="Seu código" required>
-                  <button id="toggle-password" type="button" aria-label="Mostrar código de acesso">Mostrar</button>
-                </div>
-                <p id="form-message" class="form-message" role="alert"></p>
-                <button class="button button-gold full" type="submit">Entrar</button>
-              </form>
-            </div>
-            <div id="home-session-panel" hidden>
-              <h2 class="login-card-title">Sessão ativa</h2>
-              <a class="button button-gold full" href="#boletim" data-nav="boletim">Ver boletim</a>
-            </div>
+            <h3 class="login-card-title">Entrar</h3>
+            <form id="grade-form" novalidate>
+              <label for="student-id">Matrícula</label>
+              <input id="student-id" name="student-id" inputmode="numeric" autocomplete="username" placeholder="Ex.: 2026001" required>
+              <label for="access-code">Código de acesso</label>
+              <div class="password-wrap">
+                <input id="access-code" name="access-code" type="password" autocomplete="current-password" placeholder="Seu código" required>
+                <button id="toggle-password" type="button" aria-label="Mostrar código de acesso">Mostrar</button>
+              </div>
+              <p id="form-message" class="form-message" role="alert"></p>
+              <button class="button button-gold full" type="submit">Entrar</button>
+            </form>
           </div>
         </div>
-        <img class="hero-crest" src="assets/escudo-efas.png" alt="" aria-hidden="true">
+        <div id="boletim-authed" class="grades-authed" hidden>
+          <div id="report-card" class="report-card" hidden aria-live="polite"></div>
+        </div>
       </div>
     </section>
 
@@ -82,24 +79,11 @@
       </div>
     </section>
 
-    <section class="view grade-section" id="boletim" data-view="boletim" aria-labelledby="boletim-title" hidden>
-      <div class="container">
-        <div id="boletim-guest" class="grades-guest">
-          <h2 id="boletim-title">Boletim</h2>
-          <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
-        </div>
-        <div id="boletim-authed" class="grades-authed" hidden>
-          <h2 class="view-title">Boletim</h2>
-          <div id="report-card" class="report-card" hidden aria-live="polite"></div>
-        </div>
-      </div>
-    </section>
-
     <section class="view grade-section" id="lancamento" data-view="lancamento" aria-labelledby="lancamento-title" hidden>
       <div class="container">
         <div id="lancamento-guest" class="grades-guest">
-          <h2 id="lancamento-title">Lançar notas</h2>
-          <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
+          <h2 id="lancamento-title" class="view-title">Lançar notas</h2>
+          <a class="button button-gold" href="#boletim" data-nav="boletim">Fazer login</a>
         </div>
         <div id="lancamento-authed" class="grades-authed" hidden>
           <h2 class="view-title">Lançar notas</h2>
@@ -120,8 +104,8 @@
     <section class="view grade-section" id="senha" data-view="senha" aria-labelledby="senha-title" hidden>
       <div class="container">
         <div id="senha-guest" class="grades-guest">
-          <h2 id="senha-title">Alterar senha</h2>
-          <a class="button button-gold" href="#inicio" data-nav="inicio">Fazer login</a>
+          <h2 id="senha-title" class="view-title">Alterar senha</h2>
+          <a class="button button-gold" href="#boletim" data-nav="boletim">Fazer login</a>
         </div>
         <div id="senha-authed" class="grades-authed" hidden>
           <h2 class="view-title">Alterar senha</h2>
@@ -152,6 +136,6 @@
   <footer class="site-footer site-footer-compact">
     <div class="container copyright">© <span id="current-year"></span> CFS — 1º Pelotão</div>
   </footer>
-  <script src="script.js?v=20260724-30" defer></script>
+  <script src="script.js?v=20260724-31" defer></script>
 </body>
 </html>

@@ -43,8 +43,6 @@ body.portal-app.nav-open .site-header { z-index: 100; }
 .nav-backdrop[hidden] { display: none !important; }
 .grades-guest[hidden],
 .grades-authed[hidden],
-#home-login-panel[hidden],
-#home-session-panel[hidden],
 #lancamento-empty[hidden] { display: none !important; }
 a { color: inherit; }
 button, input, select { font: inherit; }
@@ -62,13 +60,27 @@ button, a { -webkit-tap-highlight-color: transparent; }
   align-items: center;
   gap: 8px;
   margin-left: auto;
+  flex: 0 0 auto;
 }
 .student-logout-button {
-  min-height: 40px;
-  padding: 8px 14px;
-  font-size: .78rem;
-  white-space: nowrap;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--black);
+  color: #fff;
+  cursor: pointer;
+  transition: background .2s, transform .2s;
 }
+.student-logout-button:hover { background: #2a2a28; transform: translateY(-1px); }
+.student-logout-button[hidden] { display: none !important; }
+.brand { flex: 1 1 auto; min-width: 0; }
 .brand { display: inline-flex; align-items: center; gap: 12px; color: var(--black); text-decoration: none; line-height: 1.15; }
 .brand-crest { width: 52px; height: 58px; flex: 0 0 auto; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,.18)); }
 .brand strong, .brand small { display: block; }.brand strong { font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; }.brand small { margin-top: 4px; color: var(--khaki); font-size: .76rem; letter-spacing: .08em; }
@@ -88,8 +100,15 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .hero h1 { max-width: 760px; margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(2rem, 4vw, 3.2rem); line-height: 1.05; font-weight: 500; }
 .hero-text { max-width: 520px; margin: 12px 0 0; color: #e1dfd7; font-size: 1rem; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; }
-.home-login-card { margin: 0; box-shadow: 0 22px 55px rgba(0,0,0,.28); }
-.login-card-title { margin: 0 0 18px; color: var(--black); font: 500 1.35rem/1.2 Georgia, serif; }
+#boletim .home-login-card {
+  margin-top: 4px;
+  box-shadow: 0 22px 55px rgba(0,0,0,.28);
+}
+#boletim .login-card-title {
+  margin: 0 0 16px;
+  color: var(--black);
+  font: 500 1.15rem/1.2 Georgia, serif;
+}
 .button { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; padding: 12px 20px; border: 1px solid transparent; border-radius: 7px; text-decoration: none; font-weight: 750; cursor: pointer; transition: transform .2s, background .2s; }
 .button:hover { transform: translateY(-2px); }.button-gold { color: var(--black); background: var(--gold-light); }.button-gold:hover { background: var(--ivory); }.button-outline { color: #fff; border-color: var(--gold); background: transparent; }.button-outline:hover { background: rgba(255,255,255,.08); }.button-dark { color: #fff; background: var(--black); }.button-danger { color:#fff; background:var(--danger); }.button-danger:hover { background:#7f211c; }.button:disabled { cursor:not-allowed; opacity:.58; transform:none; }.observation-delete-button { width:max-content; min-height:40px; margin-top:-8px; padding:8px 14px; font-size:.78rem; }.full { width: 100%; }
 .status-card { padding: 27px; border: 1px solid rgba(228,200,109,.35); border-radius: var(--radius); background: rgba(0,0,0,.28); backdrop-filter: blur(8px); box-shadow: var(--shadow); }
@@ -198,7 +217,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 560px) { .password-change-grid { grid-template-columns:1fr; } }
 
 /* Modos de lançamento e encerramento da sessão do discente */
-.student-logout-button { position:relative; z-index:1; flex:0 0 auto; min-height:40px; margin-left:auto; padding:8px 14px; font-size:.78rem; }
 .score-mode-panel { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:20px; }
 .score-mode-panel h2 { margin:3px 0 0; }
 .score-mode-actions { display:grid; justify-items:end; gap:12px; }
@@ -365,7 +383,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .report-cards-mobile,
   .entry-cards-mobile { display: grid; gap: 0; }
   .grades-guest .button { width: 100%; }
-  .student-logout-button { padding: 8px 12px; font-size: .74rem; }
   .home-login-card input { min-height: 52px; font-size: 1rem; }
   .home-login-card .button { min-height: 52px; }
   .grade-section { padding: 32px 0 44px; }
@@ -436,9 +453,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
     font-size: 1.1rem;
     font-weight: 900;
   }
-  .main-nav a[href="#inicio"]::before { content: "⌂"; }
+  .main-nav a[href="#boletim"]::before { content: "⌂"; }
   .main-nav a[href="#calendario"]::before { content: "▦"; }
-  .main-nav a[href="#boletim"]::before { content: "✓"; }
   .main-nav a[href="#lancamento"]::before { content: "✎"; }
   .main-nav a[href="#senha"]::before { content: "🔒"; }
   .main-nav a[href="admin.html"]::before,
