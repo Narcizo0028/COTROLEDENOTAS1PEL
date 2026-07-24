@@ -8,8 +8,8 @@ import base64, binascii, difflib, hashlib, hmac, io, json, os, re, secrets, sqli
 
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "notas.db"
-HOST = os.environ.get("EFAS_HOST", "127.0.0.1")
-PORT = int(os.environ.get("EFAS_PORT", "4174"))
+HOST = os.environ.get("EFAS_HOST", "0.0.0.0")
+PORT = int(os.environ.get("EFAS_PORT", os.environ.get("PORT", "4174")))
 SESSIONS = {}
 STUDENT_SESSIONS = {}
 USER = os.environ.get("EFAS_ADMIN_USER", "administrador")
