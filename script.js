@@ -245,7 +245,12 @@ studentEntryForm.addEventListener('submit',async e=>{
     studentEntryMessage.textContent='Nenhuma disciplina disponível para lançamento.';
     return;
   }
-  button.disabled=true;
+  const originalLabel=button.textContent;
+  const controls=[...studentEntryForm.querySelectorAll('input,button')];
+  controls.forEach(control=>control.disabled=true);
+  studentEntryForm.setAttribute('aria-busy','true');
+  studentEntryPanel.classList.add('is-saving');
+  button.textContent='Salvando...';
   studentEntryMessage.textContent='Salvando suas notas...';
   try{
     const response=await fetch('/api/student/scores',{
@@ -262,15 +267,16 @@ studentEntryForm.addEventListener('submit',async e=>{
       renderReport(studentSession);
     }
     renderEntrySheet(data.entry_sheet);
-    const cleared=Number(data.cleared||0);
-    studentEntryMessage.textContent=cleared
-      ?`${data.saved} disciplina(s) salva(s) e ${cleared} limpa(s) com sucesso.`
-      :`${data.saved} disciplina(s) salva(s) com sucesso.`;
-    reportCard.scrollIntoView({behavior:'smooth',block:'start'});
+    studentEntryMessage.classList.remove('is-error');
+    studentEntryMessage.textContent=`Notas salvas e confirmadas no banco de dados (${data.saved} disciplina(s)).`;
   }catch(error){
+    studentEntryMessage.classList.add('is-error');
     studentEntryMessage.textContent=error.message;
   }finally{
-    button.disabled=false;
+    controls.forEach(control=>control.disabled=false);
+    studentEntryForm.removeAttribute('aria-busy');
+    studentEntryPanel.classList.remove('is-saving');
+    button.textContent=originalLabel;
   }
 });
 

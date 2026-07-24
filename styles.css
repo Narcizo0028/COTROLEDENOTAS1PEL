@@ -134,9 +134,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .student-entry-toggle-button.available { background:var(--success); }
 .student-entry-toggle-button.unavailable { background:var(--danger); }
 .student-entry-toggle-button:disabled { cursor:wait; opacity:.65; transform:none; }
+.score-panel > .button-gold { width:max-content; min-width:210px; margin:8px auto 0; }
 .observation-controls { display:grid; gap:12px; margin-top:12px; }
-.observation-action-buttons { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.observation-action-buttons .button { width:100%; }
+.observation-action-buttons { display:flex; justify-content:center; gap:9px; flex-wrap:wrap; }
+.observation-action-buttons .button { width:auto; min-width:156px; min-height:38px; padding:8px 13px; font-size:.76rem; }
 .observation-editor { padding:16px; border:1px solid var(--line); border-radius:8px; background:#f8f6ef; }
 .observation-editor label { display:grid; gap:7px; font-size:.82rem; font-weight:750; }
 .observation-editor textarea { width:100%; min-height:110px; padding:12px; border:1px solid #bdb9ad; border-radius:6px; resize:vertical; font:inherit; }
@@ -210,7 +211,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
   border-top: 5px solid var(--blue-gray);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  transition: opacity .18s ease, box-shadow .18s ease;
 }
+.student-entry-panel.is-saving { opacity: .78; box-shadow: 0 8px 24px rgba(28,27,23,.08); }
 .student-entry-head {
   display: flex;
   justify-content: space-between;
@@ -271,6 +274,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   color: var(--success);
   min-height: 0;
 }
+.student-entry-actions .form-message.is-error { color: var(--danger); }
 @media (max-width: 720px) {
   .student-entry-head { flex-direction: column; align-items: stretch; }
   .student-entry-hint { max-width: none; }

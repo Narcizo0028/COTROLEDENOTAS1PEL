@@ -127,6 +127,23 @@ def merge_imported_score(existing, exam1, exam2, work, status, mode, exam_count)
     if work is None:work=previous.get("work")
     return exam1, exam2, work, None
 
+def merge_student_score(existing, exam1, exam2, work, status, mode, exam_count):
+    """No portal do discente, campos não preenchidos preservam as notas anteriores."""
+    return merge_imported_score(existing, exam1, exam2, work, status, mode, exam_count)
+
+def score_matches(row, exam1, exam2, work, status):
+    """Confirma que o SQLite devolve exatamente os valores que acabaram de ser gravados."""
+    if not row:
+        return False
+    expected=(exam1,exam2,work,status)
+    stored=(row["exam1"],row["exam2"],row["work"],row["status"])
+    return all(
+        (left is None and right is None)
+        or (isinstance(left,(int,float)) and isinstance(right,(int,float)) and abs(float(left)-float(right))<0.000001)
+        or left==right
+        for left,right in zip(expected,stored)
+    )
+
 def assert_db_writable(db):
     """Garante que o banco aceita gravação antes de confirmar a importação."""
     try:
@@ -537,12 +554,27 @@ class Handler(SimpleHTTPRequestHandler):
                         subject=allowed.get(subject_id)
                         if not subject:raise ValueError("Uma das disciplinas não está liberada para lançamento próprio.")
                         exam1,exam2,work,status=validate_subject_entry(subject,entry)
+                        existing=db.execute(
+                            "SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",
+                            (sid,subject_id),
+                        ).fetchone()
+                        exam1,exam2,work,status=merge_student_score(
+                            existing,exam1,exam2,work,status,subject["grading_mode"],subject["exam_count"]
+                        )
                         prepared.append((sid,subject_id,exam1,exam2,work,status))
                     saved=0;cleared=0
                     for item in prepared:
                         if save_score(db,*item):saved+=1
                         else:cleared+=1
                     db.commit()
+                    for _,subject_id,exam1,exam2,work,status in prepared:
+                        expected_empty=status is None and exam1 is None and exam2 is None and work is None
+                        stored=db.execute(
+                            "SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",
+                            (sid,subject_id),
+                        ).fetchone()
+                        if (expected_empty and stored) or (not expected_empty and not score_matches(stored,exam1,exam2,work,status)):
+                            raise sqlite3.Error("A gravação não pôde ser confirmada no banco de dados. Tente novamente.")
                     sheet=student_entry_sheet(db,sid)
                     scores=[dict(x) for x in db.execute("SELECT sub.id subject_id,sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(sid,))]
                     own=next((x for x in ranking(db) if x["id"]==sid),None)
