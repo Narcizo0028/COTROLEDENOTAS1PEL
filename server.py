@@ -459,8 +459,12 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         if path in ("/index.html","/admin.html"):
             try:
-                return target.read_bytes()[:32].lstrip().lower().startswith(b"<!doctype html")
-            except OSError:
+                raw = target.read_bytes()[:512]
+                if raw.startswith(b"SQLite format 3") or b"\x00" in raw:
+                    return False
+                text = raw.decode("utf-8-sig",errors="strict").lstrip().lower()
+                return text.startswith("<!doctype html") or text.startswith("<html")
+            except (OSError,UnicodeDecodeError):
                 return False
         return True
     def end_headers(self):
