@@ -3,7 +3,7 @@ services:
     name: controle-notas-1-pelotao
     runtime: python
     plan: starter
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install "reportlab>=4.0,<5" "pdfplumber>=0.11,<1"
     startCommand: python server.py
     healthCheckPath: /
     envVars:
@@ -14,6 +14,8 @@ services:
       - key: EFAS_ADMIN_USER
         value: administrador
       - key: EFAS_INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: EFAS_RESET_ADMIN_PASSWORD
         sync: false
       - key: EFAS_COOKIE_SECURE
         value: "1"
