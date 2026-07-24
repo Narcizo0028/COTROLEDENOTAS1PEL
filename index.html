@@ -1,16 +1,154 @@
-<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Administração | CFS — 1º Pelotão</title><link rel="stylesheet" href="styles.css"></head>
-<body class="admin-page"><header class="site-header"><div class="topbar">Área restrita • Administração EFAS</div><div class="nav-wrap container"><a class="brand" href="index.html"><img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58"><span><strong>Controle de Notas</strong><small>Painel administrativo</small></span></a><a class="button button-dark" href="index.html">Voltar ao portal</a></div></header>
-<main class="admin-main container"><section id="login-panel" class="admin-login"><p class="eyebrow dark">Acesso protegido</p><h1>Entrar como administrador</h1><form id="admin-login-form" class="form-card"><label for="admin-user">Usuário</label><input id="admin-user" autocomplete="username" required><label for="admin-password">Senha</label><input id="admin-password" type="password" autocomplete="current-password" required><p id="login-message" class="form-message" role="alert"></p><button class="button button-gold full">Entrar</button></form></section>
-<section id="dashboard" hidden><div class="admin-dashboard-head"><div><p class="eyebrow dark">Banco de dados acadêmico</p><h1>Painel do administrador</h1></div><button id="logout-button" class="button button-dark">Sair</button></div><div id="initial-warning" class="admin-warning" hidden>Por segurança, altere a senha inicial antes de cadastrar dados.</div><section class="admin-panel score-mode-panel" aria-labelledby="score-mode-title"><div><p class="eyebrow dark">Formas de lançamento</p><h2 id="score-mode-title">Como deseja lançar as notas?</h2></div><div class="score-mode-buttons" role="group" aria-label="Modo de lançamento"><button class="score-mode-button active" type="button" data-score-mode="subject" aria-pressed="true">Por matéria individual</button><button class="score-mode-button" type="button" data-score-mode="student" aria-pressed="false">Por discente</button><button class="score-mode-button" type="button" data-score-mode="collective" aria-pressed="false">Coletivo por matéria</button></div></section>
-<div class="admin-grid compact-grid"><form id="password-form" class="admin-panel"><h2>Alterar senha</h2><label>Nova senha<input id="new-password" type="password" minlength="12" required></label><button class="button button-dark">Salvar senha</button><p class="panel-message"></p></form>
-<form id="student-form" class="admin-panel"><h2>Cadastrar ou atualizar discente</h2><label>Matrícula<input name="student_id" required></label><label>Nome<input name="name" required></label><label>Posto/graduação<input name="rank" value="Aluno CFS" required></label><label>Código individual<input name="access_code" type="password" minlength="6" required></label><button class="button button-gold">Salvar discente</button><p class="panel-message"></p></form>
-<form id="score-form" class="admin-panel score-panel"><h2 id="individual-score-title">Lançamento individual por matéria</h2><p id="individual-score-help" class="section-note">A matéria permanecerá selecionada após salvar; escolha o próximo discente.</p><label>Discente<select name="student_id" id="score-student" required><option value="">Selecione</option></select></label><label>Disciplina<select name="subject_id" id="score-subject" required><option value="">Selecione</option></select></label><div id="score-rule" class="score-rule">Selecione uma disciplina para visualizar a regra.</div><label id="status-label" hidden>Resultado<select name="status"><option value="">Selecione</option><option>Apto</option><option>Inapto</option></select></label><div class="score-fields"><label id="exam1-label"><span class="field-name">Avaliação Complementar (AVC)</span> <span id="exam1-max"></span><input name="exam1" type="number" min="0" step="0.01" inputmode="decimal"></label><label id="exam2-label"><span class="field-name">Avaliação Final (AVF)</span> <span id="exam2-max">(máx. 4)</span><input name="exam2" type="number" min="0" max="4" step="0.01" inputmode="decimal"></label><label id="work-label"><span class="field-name">Trabalho</span> <span id="work-max">(máx. 3)</span><input name="work" type="number" min="0" max="3" step="0.01" inputmode="decimal"></label></div><label>Observação individual<textarea name="observation" id="score-observation" rows="4" placeholder="Informações pertinentes que serão exibidas ao discente."></textarea></label><button class="button button-gold">Salvar resultado</button><p class="panel-message"></p></form></div>
-<form id="collective-score-form" class="admin-panel collective-score-panel" hidden><div class="panel-title"><div><h2>Lançamento coletivo por matéria</h2><p class="section-note">Preencha vários discentes e salve todos os resultados de uma só vez.</p></div><label>Disciplina<select id="collective-subject" required><option value="">Selecione</option></select></label></div><div id="collective-rule" class="score-rule">Selecione uma disciplina para montar a tabela.</div><div id="collective-score-table"></div><button id="collective-save-button" class="button button-gold" type="submit" disabled>Salvar lançamentos coletivos</button><p class="panel-message" role="status" aria-live="polite"></p></form>
-<section class="admin-panel pdf-score-import-panel" aria-labelledby="pdf-score-import-title"><div class="panel-title"><div><p class="eyebrow dark">Importação assistida</p><h2 id="pdf-score-import-title">Anexar notas de um discente por PDF</h2><p class="section-note">Escolha o discente e envie um PDF com texto selecionável. O sistema mostrará uma prévia antes de gravar qualquer nota.</p></div></div><form id="student-pdf-score-form" class="pdf-score-import-form"><label>Discente<select id="pdf-score-student" required><option value="">Selecione</option></select></label><label>Arquivo PDF<input id="student-score-pdf" type="file" accept="application/pdf,.pdf" required></label><button id="student-pdf-analyze-button" class="button button-gold" type="submit">Ler PDF e conferir notas</button><p class="panel-message" role="status" aria-live="polite"></p></form><div id="student-pdf-preview" hidden><div class="pdf-preview-head"><div><h3>Prévia das notas reconhecidas</h3><p>Confira e corrija os valores. Desmarque uma matéria para não importá-la.</p></div><button id="student-pdf-cancel" class="button button-outline-dark" type="button">Cancelar</button></div><div id="student-pdf-preview-table"></div><button id="student-pdf-confirm" class="button button-dark" type="button">Confirmar e salvar notas</button><p id="student-pdf-confirm-message" class="panel-message" role="status" aria-live="polite"></p></div></section>
-<form id="exam-form" class="admin-panel schedule-panel"><h2>Cadastrar data no calendário</h2><div class="schedule-grid"><label>Data<input name="date" type="date" required></label><label>Disciplina<select name="subject" id="calendar-subject" required></select></label><label>Horário<input name="time" placeholder="08h00" required></label><label>Local<input name="place" required></label><label>Tipo<select name="type" id="calendar-type"><option>Avaliação Complementar (AVC)</option><option>Avaliação Final (AVF)</option><option>Trabalho</option></select></label></div><button class="button button-gold">Cadastrar no calendário</button><p class="panel-message"></p></form>
-<form id="calendar-import-form" class="admin-panel schedule-panel"><h2>Importar calendário oficial em PDF</h2><p class="section-note">Selecione o PDF oficial da EFAS. O sistema lerá as provas reconhecidas e substituirá o calendário atual. Limite: 5 MB.</p><label for="calendar-pdf">Arquivo PDF<input id="calendar-pdf" name="calendar_pdf" type="file" accept="application/pdf,.pdf" required></label><button class="button button-gold" type="submit">Importar e atualizar calendário</button><p class="panel-message" role="status" aria-live="polite"></p></form>
-<section class="admin-panel data-panel"><div class="panel-title"><h2>Ranking completo do pelotão</h2><div class="panel-actions"><button id="pdf-report-button" class="button button-gold" type="button">Gerar relatório em PDF</button><button id="refresh-button" class="button button-dark" type="button">Atualizar</button></div></div><p class="section-note">Visível somente para o administrador. A média considera as disciplinas com algum lançamento.</p><p id="pdf-report-message" class="panel-message" role="status" aria-live="polite"></p><div id="ranking-data"></div></section>
-<section class="admin-panel data-panel"><h2>Notas lançadas</h2><div id="scores-data"></div></section>
-<dialog id="student-details-dialog" class="student-details-dialog" aria-labelledby="student-details-title"><div class="student-details-head"><div><p class="eyebrow dark">Consulta individual</p><h2 id="student-details-title">Notas do discente</h2></div><button id="student-details-close" class="dialog-close" type="button" aria-label="Fechar consulta">×</button></div><div id="student-details-content"></div><div class="student-details-actions"><button id="student-details-close-bottom" class="button button-dark" type="button">Fechar</button></div></dialog>
-<dialog id="admin-feedback-dialog" class="student-details-dialog admin-feedback-dialog" aria-labelledby="admin-feedback-title"><div class="student-details-head"><div><p id="admin-feedback-eyebrow" class="eyebrow dark">Aviso</p><h2 id="admin-feedback-title">Mensagem</h2></div><button id="admin-feedback-close" class="dialog-close" type="button" aria-label="Fechar aviso">×</button></div><div id="admin-feedback-content" class="admin-feedback-content"></div><div class="student-details-actions"><button id="admin-feedback-close-bottom" class="button button-dark" type="button">Entendi</button></div></dialog>
-</section></main><script src="admin.js?v=20260723-12" defer></script></body></html>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Portal institucional para consulta de calendário de provas e notas finais do CFS — 1º Pelotão.">
+  <meta name="theme-color" content="#1d1c18">
+  <title>Controle de Notas | CFS — 1º Pelotão</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
+  <header class="site-header" id="topo">
+    <div class="topbar">Portal acadêmico oficial • CFS / 1º Pelotão</div>
+    <div class="nav-wrap container">
+      <a class="brand" href="#inicio" aria-label="Página inicial do CFS, 1º Pelotão">
+        <img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58">
+        <span><strong>Controle de Notas</strong><small>CFS • 1º Pelotão</small></span>
+      </a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="menu-principal" aria-label="Abrir menu">
+        <span></span><span></span><span></span>
+      </button>
+      <nav id="menu-principal" class="main-nav" aria-label="Navegação principal">
+        <a href="#inicio" class="active">Início</a>
+        <a href="#calendario">Calendário de provas</a>
+        <a href="#notas">Notas e lançamento</a>
+        <a href="#administracao" class="nav-admin">Administração</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="conteudo">
+    <section class="hero" id="inicio" aria-labelledby="hero-title">
+      <div class="hero-pattern" aria-hidden="true"></div>
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Ensino • Disciplina • Excelência</p>
+          <h1 id="hero-title">Informação acadêmica clara, segura e sempre ao alcance.</h1>
+          <!-- EDITE: substitua o parágrafo abaixo pela mensagem oficial do comando. -->
+          <p class="hero-text">Consulte as datas das avaliações e acompanhe seu desempenho no CFS — 1º Pelotão em um ambiente organizado e de acesso simples.</p>
+          <div class="hero-actions">
+            <a class="button button-gold" href="#notas">Entrar e lançar notas</a>
+            <a class="button button-outline" href="#calendario">Ver calendário</a>
+          </div>
+        </div>
+        <aside class="status-card" aria-label="Informações do período letivo">
+          <span class="status-dot">Sistema disponível</span>
+          <p>Período letivo</p>
+          <!-- EDITE: atualize o período letivo. -->
+          <strong>2026 • Turma CFS</strong>
+          <div class="status-line"></div>
+          <small>Dados atualizados pelo administrador do 1º Pelotão.</small>
+        </aside>
+      </div>
+      <img class="hero-crest" src="assets/escudo-efas.png" alt="" aria-hidden="true">
+    </section>
+
+    <section class="quick-info" aria-label="Atalhos e avisos">
+      <div class="container info-grid">
+        <article><span class="info-number">01</span><div><h2>Consulta individual</h2><p>Suas notas são exibidas somente após identificação.</p></div></article>
+        <article><span class="info-number">02</span><div><h2>Agenda centralizada</h2><p>Datas, horários e locais reunidos em um só lugar.</p></div></article>
+        <article><span class="info-number">03</span><div><h2>Canal institucional</h2><p>Informações publicadas exclusivamente pela administração.</p></div></article>
+      </div>
+    </section>
+
+    <section class="section" id="calendario" aria-labelledby="calendar-title">
+      <div class="container">
+        <div class="section-heading">
+          <div><p class="eyebrow dark">Planejamento acadêmico</p><h2 id="calendar-title">Calendário de provas</h2></div>
+          <label class="filter-label">Filtrar por disciplina
+            <select id="discipline-filter"><option value="todas">Todas as disciplinas</option></select>
+          </label>
+        </div>
+        <!-- EDITE: as provas são cadastradas no array exams, no arquivo script.js. -->
+        <div id="exam-list" class="exam-list" aria-live="polite"></div>
+        <p class="section-note"><strong>Calendário oficial atualizado em 20/07/2026.</strong> Educação Física Militar: 1º TAF nos tempos 39 a 42, 2º TAF nos tempos 57 a 60 e 3º TAF nos tempos 75 a 78; as datas serão informadas pela coordenação de cada turma. As demais datas podem sofrer alterações.</p>
+      </div>
+    </section>
+
+    <section class="section grade-section" id="notas" aria-labelledby="grades-title">
+      <div class="container grade-grid">
+        <div class="grade-intro">
+          <p class="eyebrow">Acesso do discente</p>
+          <h2 id="grades-title">Notas e lançamento</h2>
+          <p>Informe sua matrícula e seu código individual para consultar o boletim e lançar suas próprias notas.</p>
+          <ul class="check-list">
+            <li>Consulta privada e individual</li>
+            <li>Lançamento das suas provas e trabalhos</li>
+            <li>Média geral calculada automaticamente</li>
+          </ul>
+        </div>
+        <div class="form-card">
+          <form id="grade-form" novalidate>
+            <label for="student-id">Matrícula</label>
+            <input id="student-id" name="student-id" inputmode="numeric" autocomplete="username" placeholder="Ex.: 2026001" required>
+            <label for="access-code">Código de acesso</label>
+            <div class="password-wrap">
+              <input id="access-code" name="access-code" type="password" autocomplete="current-password" placeholder="Informe seu código" required>
+              <button id="toggle-password" type="button" aria-label="Mostrar código de acesso">Mostrar</button>
+            </div>
+            <p id="form-message" class="form-message" role="alert"></p>
+            <button class="button button-gold full" type="submit">Entrar na área do aluno</button>
+            <p class="demo-tip">Utilize a matrícula e o código individual fornecidos pela administração.</p>
+          </form>
+        </div>
+      </div>
+      <div class="container">
+        <div id="report-card" class="report-card" hidden aria-live="polite"></div>
+        <section id="student-entry-panel" class="student-entry-panel" hidden aria-labelledby="student-entry-title">
+          <div class="student-entry-head">
+            <div>
+              <p class="eyebrow dark">Lançamento próprio</p>
+              <h3 id="student-entry-title">Inserir minhas notas</h3>
+              <p>Preencha Prova 1, Prova 2 e Trabalho nas disciplinas liberadas. No TAF use TAF 1, TAF 2 e TAF 3.</p>
+            </div>
+            <p class="student-entry-hint">Campos vazios removem a nota correspondente ao salvar.</p>
+          </div>
+          <form id="student-entry-form">
+            <div id="student-entry-table" class="student-entry-table"></div>
+            <div class="student-entry-actions">
+              <button id="student-entry-submit" class="button button-gold" type="submit">Salvar minhas notas</button>
+              <p id="student-entry-message" class="form-message" role="status" aria-live="polite"></p>
+            </div>
+          </form>
+        </section>
+        <section id="student-password-panel" class="student-password-panel" hidden aria-labelledby="student-password-title"><div class="password-panel-head"><div class="security-mark" aria-hidden="true">✓</div><div><span class="security-label">Área segura</span><h3 id="student-password-title">Alterar senha de acesso</h3><p>No primeiro acesso, substitua a senha temporária. A nova senha deve possuir pelo menos 8 caracteres.</p></div></div><form id="student-password-form"><div class="password-change-grid"><label for="student-new-password">Nova senha<input id="student-new-password" name="password" type="password" minlength="8" autocomplete="new-password" required><small>Mínimo de 8 caracteres</small></label><label for="student-confirm-password">Confirmar nova senha<input id="student-confirm-password" name="confirmation" type="password" minlength="8" autocomplete="new-password" aria-describedby="password-match-indicator" required><small>Digite novamente a mesma senha</small></label></div><p id="password-match-indicator" class="password-match" data-state="empty" role="status" aria-live="polite"><span aria-hidden="true">•</span> Aguardando a confirmação da senha.</p><label class="show-passwords"><input id="show-student-passwords" type="checkbox"> Mostrar as senhas digitadas</label><div class="password-panel-actions"><button id="student-password-submit" class="button button-gold" type="submit" disabled>Salvar nova senha</button><span class="security-note">Sua senha não é exibida para outros usuários.</span></div><p class="form-message" role="status" aria-live="polite"></p></form></section>
+      </div>
+    </section>
+
+    <section class="section admin-section" id="administracao" aria-labelledby="admin-title">
+      <div class="container admin-card">
+        <div>
+          <p class="eyebrow dark">Área restrita</p>
+          <h2 id="admin-title">Administração</h2>
+          <p>O cadastro e a atualização de dados devem ser realizados em um painel protegido, conectado ao banco de dados institucional.</p>
+        </div>
+        <a class="button button-dark" href="admin.html">Acesso do administrador</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div class="brand footer-brand"><img class="brand-crest" src="assets/escudo-efas.png" alt="Escudo da EFAS" width="52" height="58"><span><strong>CFS • 1º Pelotão</strong><small>Controle de Notas</small></span></div>
+      <!-- EDITE: insira abaixo os contatos institucionais oficiais. -->
+      <div><strong>Contato institucional</strong><p>Secretaria do 1º Pelotão<br><a href="mailto:contato@instituicao.mil.br">contato@instituicao.mil.br</a></p></div>
+      <div><strong>Acesso rápido</strong><p><a href="#calendario">Calendário</a><br><a href="#notas">Notas finais</a></p></div>
+    </div>
+    <div class="container copyright">© <span id="current-year"></span> CFS — 1º Pelotão. Uso institucional.</div>
+  </footer>
+  <script src="script.js?v=20260723-12" defer></script>
+</body>
+</html>
