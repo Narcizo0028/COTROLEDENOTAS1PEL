@@ -591,6 +591,32 @@ class Handler(SimpleHTTPRequestHandler):
                 self.output({"error":str(error)},400);return
         user=self.require_admin()
         if not user:return
+        if self.path=="/api/admin/exams/rectify":
+            try:
+                event_id=int(data.get("exam_id"))
+                values={key:str(data.get(key,"")).strip() for key in ("date","subject","time","place","type")}
+                if not all(values.values()):raise ValueError("Preencha todos os campos da retificação.")
+                try:datetime.strptime(values["date"],"%Y-%m-%d")
+                except ValueError:raise ValueError("Informe uma data válida.")
+                if len(values["time"])>30 or len(values["place"])>120:raise ValueError("Horário ou local acima do tamanho permitido.")
+                with connect() as db:
+                    current=db.execute("SELECT id FROM exams WHERE id=?",(event_id,)).fetchone()
+                    if not current:raise ValueError("A avaliação selecionada não existe mais. Atualize a página.")
+                    subject=db.execute("SELECT exam_count,grading_mode FROM subjects WHERE name=?",(values["subject"],)).fetchone()
+                    if not subject:raise ValueError("Selecione uma disciplina válida.")
+                    if subject["grading_mode"]=="apt":allowed={"Resultado Apto/Inapto"}
+                    elif subject["grading_mode"]=="taf":allowed={"1º TAF","2º TAF","3º TAF"}
+                    elif subject["exam_count"]==1:allowed={"Avaliação Final (AVF)","Trabalho"}
+                    else:allowed={"Avaliação Complementar (AVC)","Avaliação Final (AVF)","Trabalho"}
+                    if values["type"] not in allowed:raise ValueError("O tipo de avaliação não corresponde à disciplina selecionada.")
+                    duplicate=db.execute("SELECT id FROM exams WHERE id<>? AND date=? AND subject=? AND type=?",(event_id,values["date"],values["subject"],values["type"])).fetchone()
+                    if duplicate:raise ValueError("Já existe uma avaliação igual nessa data.")
+                    db.execute("UPDATE exams SET date=?,subject=?,time=?,place=?,type=? WHERE id=?",(values["date"],values["subject"],values["time"],values["place"],values["type"],event_id))
+                    db.commit()
+                    saved=db.execute("SELECT id,date,subject,time,place,type FROM exams WHERE id=?",(event_id,)).fetchone()
+                    if not saved:raise sqlite3.Error("A retificação não pôde ser confirmada no banco de dados.")
+                self.output({"ok":True,"exam":dict(saved)});return
+            except (ValueError,TypeError,sqlite3.Error) as error:self.output({"error":str(error)},400);return
         if self.path=="/api/admin/calendar/import":
             try:
                 encoded=str(data.get("pdf_base64",''));raw=base64.b64decode(encoded,validate=True)
