@@ -138,21 +138,3 @@ async function confirmPdfImport(event){
 const pdfConfirmButton=$('#student-pdf-confirm');
 if(pdfConfirmButton)pdfConfirmButton.onclick=confirmPdfImport;
 // O botão existe desde o carregamento da página; o vínculo direto garante o clique.
-
-// Exclusão pontual de uma avaliação do calendário. Não remove a disciplina ou notas.
-const rectifyActions=document.querySelector('.rectify-actions');
-if(rectifyActions&&!$('#delete-exam-button'))rectifyActions.insertAdjacentHTML('beforeend','<button id="delete-exam-button" class="button button-danger" type="button">Excluir do calendário</button>');
-const deleteExamButton=$('#delete-exam-button');
-if(deleteExamButton)deleteExamButton.addEventListener('click',async event=>{
-  const button=event.currentTarget,form=$('#rectify-exam-form'),message=form.querySelector('.panel-message');
-  const exam=cache.exams.find(item=>String(item.id)===$('#rectify-exam-select').value);
-  if(!exam){message.textContent='Selecione uma avaliação para excluir.';return}
-  if(!window.confirm(`Excluir ${exam.subject} (${exam.type}) do calendário?\n\nEsta ação não exclui a disciplina nem as notas dos discentes.`))return;
-  button.disabled=true;button.textContent='Excluindo...';message.textContent='Excluindo a avaliação selecionada...';
-  try{
-    const result=await api('/api/admin/exams/delete',{method:'POST',body:JSON.stringify({exam_id:exam.id})});
-    await loadData();form.reset();$('#rectify-exam-fields').hidden=true;
-    message.textContent=`Avaliação excluída do calendário: ${result.deleted.subject}.`;
-  }catch(error){message.textContent=`Erro ao excluir: ${error.message}`}
-  finally{button.disabled=false;button.textContent='Excluir do calendário'}
-});
