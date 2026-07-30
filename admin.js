@@ -134,19 +134,27 @@ const pdfConfirmButton=$('#student-pdf-confirm');
 if(pdfConfirmButton)pdfConfirmButton.onclick=confirmPdfImport;
 // O botão existe desde o carregamento da página; o vínculo direto garante o clique.
 
-// Remove a carga horária apenas dos seletores de disciplina do administrador.
-const adminSubjectSelects=['#score-subject','#collective-subject','#calendar-subject'];
-function removeSubjectHoursFromAdmin(){
-  for(const selector of adminSubjectSelects){
+// Numera as relações administrativas sem alterar os valores usados pelo banco.
+const numberedAdminSelects={
+  '#score-student':'student',
+  '#pdf-score-student':'student',
+  '#score-subject':'subject',
+  '#collective-subject':'subject',
+  '#calendar-subject':'subject',
+};
+function numberAdminOptions(){
+  for(const [selector,type] of Object.entries(numberedAdminSelects)){
     const select=$(selector);if(!select)continue;
-    for(const option of select.options){
-      const cleanText=option.textContent.replace(/\s+—\s+\d+\s+h\/a$/i,'');
-      if(cleanText!==option.textContent)option.textContent=cleanText;
-    }
+    [...select.options].filter(option=>option.value).forEach((option,index)=>{
+      let label=option.textContent.replace(/^\d+\.\s+/,'');
+      if(type==='subject')label=label.replace(/\s+—\s+\d+\s+h\/a$/i,'');
+      const numbered=`${index+1}. ${label}`;
+      if(option.textContent!==numbered)option.textContent=numbered;
+    });
   }
 }
-for(const selector of adminSubjectSelects){
+for(const selector of Object.keys(numberedAdminSelects)){
   const select=$(selector);
-  if(select)new MutationObserver(removeSubjectHoursFromAdmin).observe(select,{childList:true,subtree:true});
+  if(select)new MutationObserver(numberAdminOptions).observe(select,{childList:true,subtree:true});
 }
-removeSubjectHoursFromAdmin();
+numberAdminOptions();

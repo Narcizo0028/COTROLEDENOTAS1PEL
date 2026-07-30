@@ -266,7 +266,7 @@ def initialize():
         db.commit()
 
 def subject_rows(db):
-    return [dict(x) for x in db.execute("SELECT id,hours,name,exam_count,grading_mode FROM subjects ORDER BY hours,name")]
+    return [dict(x) for x in db.execute("SELECT id,hours,name,exam_count,grading_mode FROM subjects ORDER BY name COLLATE NOCASE")]
 
 def parse_calendar_pdf(raw):
     """Extrai avaliações do modelo oficial de calendário da EFAS."""
