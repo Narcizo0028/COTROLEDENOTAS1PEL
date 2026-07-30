@@ -26,23 +26,6 @@ SUBJECTS = [
  (12,"Instrumentos de Menor Potencial Ofensivo",1),(16,"Saúde Integral",1),(20,"Gestão Logística",1),(20,"Gestão Orçamentária e Financeira",1),(20,"Resolução de Conflitos e Técnicas de Mediação",1),(20,"Tecnologias Aplicadas à Atividade Policial",1),(30,"Análise Criminal",1),(30,"Comunicação Organizacional",1),(30,"Direito Civil Aplicado à Atividade Policial",1),(30,"Direito Penal Militar",1),(30,"Direito Processual Penal Comum e Militar",1),(30,"Direitos Humanos",1),(30,"Gestão de Serviços Operacionais",1),(30,"Inteligência de Segurança Pública",1),(30,"Legislação Aplicada à Atividade Policial",1),(30,"Liderança Policial Militar e Gestão de Pessoas",1),(30,"Polícia Comunitária",1),(30,"Proteção e Defesa Civil",1),
  (40,"Defesa Pessoal Policial",2),(40,"Direito Penal",2),(40,"Ordem Unida",2),(40,"Policiamento Ostensivo de Trânsito",2),(40,"Redação de Documentos Institucionais da PMMG",2),(50,"Legislação Institucional Aplicada à Gestão de Recursos Humanos",2),(60,"Armamento e Tiro Policial",2),(70,"Processos Administrativos",2),(70,"Técnica Policial Militar",2),(80,"Educação Física Militar",2),(270,"APMI – Atividades Policiais e Militares Interdisciplinares",2)]
 
-# Disciplinas liberadas para o próprio discente lançar notas.
-STUDENT_ENTRY_SUBJECTS = {
-    "Comunicação Organizacional",
-    "Direito Penal",
-    "Direito Penal Militar",
-    "Gestão de Serviços Operacionais",
-    "Gestão Orçamentária e Financeira",
-    "Inteligência de Segurança Pública",
-    "Legislação Institucional Aplicada à Gestão de Recursos Humanos",
-    "Ordem Unida",
-    "Polícia Comunitária",
-    "Processos Administrativos",
-    "Redação de Documentos Institucionais da PMMG",
-    "Técnica Policial Militar",
-    "Educação Física Militar",
-}
-
 OFFICIAL_CALENDAR_VERSION = "modulo-1-2026-07-20"
 OFFICIAL_EXAMS = [
  ("2026-05-13","Redação de Documentos Institucionais da PMMG","06h30min","Duração: 100 minutos","Avaliação Complementar (AVC)"),
@@ -182,6 +165,8 @@ def parse_grade_value(value, maximum, label):
 def subject_fields(subject):
     """Define rótulos e limites exibidos ao discente no lançamento próprio."""
     mode = subject["grading_mode"]
+    if mode == "apt":
+        return [{"key": "status", "label": "Resultado", "type": "status"}]
     if mode == "taf":
         return [
             {"key": "exam1", "label": "TAF 1", "max": 3},
@@ -205,10 +190,8 @@ def student_entry_sheet(db, student_id):
                   sc.exam1, sc.exam2, sc.work, sc.status
            FROM subjects sub
            LEFT JOIN scores sc ON sc.subject_id=sub.id AND sc.student_id=?
-           WHERE sub.name IN (%s)
            ORDER BY sub.name"""
-        % (",".join("?" for _ in STUDENT_ENTRY_SUBJECTS)),
-        (student_id, *sorted(STUDENT_ENTRY_SUBJECTS)),
+        ,(student_id,),
     ).fetchall()
     sheet = []
     for row in rows:
@@ -220,7 +203,10 @@ def student_entry_sheet(db, student_id):
 def validate_subject_entry(subject, entry):
     mode = subject["grading_mode"]
     if mode == "apt":
-        raise ValueError(f"{subject['name']} não aceita lançamento próprio.")
+        status=str(entry.get("status","")).strip() or None
+        if status not in (None,"Apto","Inapto"):
+            raise ValueError(f"Selecione Apto ou Inapto para {subject['name']}.")
+        return None,None,None,status
     if mode == "taf":
         return (
             parse_grade_value(entry.get("exam1"), 3, "TAF 1"),
@@ -554,23 +540,22 @@ class Handler(SimpleHTTPRequestHandler):
             if not sid:self.output({"error":"Sessão expirada. Entre novamente com sua matrícula e senha."},401);return
             try:
                 entries=data.get("entries")
-                if not isinstance(entries,list) or not 1<=len(entries)<=len(STUDENT_ENTRY_SUBJECTS):
-                    raise ValueError("Envie as notas das disciplinas liberadas para lançamento.")
+                if not isinstance(entries,list) or not 1<=len(entries)<=100:
+                    raise ValueError("Selecione uma disciplina e envie o resultado.")
                 with connect() as db:
                     if not student_entry_enabled(db):
                         raise ValueError("O lanÃ§amento de notas pelos discentes estÃ¡ indisponÃ­vel no momento.")
                     allowed={row["id"]:dict(row) for row in db.execute(
-                        "SELECT id,name,exam_count,grading_mode FROM subjects WHERE name IN (%s)"
-                        % (",".join("?" for _ in STUDENT_ENTRY_SUBJECTS)),
-                        tuple(sorted(STUDENT_ENTRY_SUBJECTS)),
+                        "SELECT id,name,exam_count,grading_mode FROM subjects ORDER BY name"
                     )}
+                    if len(entries)>len(allowed):raise ValueError("Quantidade de disciplinas acima do permitido.")
                     prepared=[];seen=set()
                     for entry in entries:
                         subject_id=int(entry.get("subject_id"))
                         if subject_id in seen:raise ValueError("Há disciplinas duplicadas no envio.")
                         seen.add(subject_id)
                         subject=allowed.get(subject_id)
-                        if not subject:raise ValueError("Uma das disciplinas não está liberada para lançamento próprio.")
+                        if not subject:raise ValueError("A disciplina selecionada não está cadastrada.")
                         exam1,exam2,work,status=validate_subject_entry(subject,entry)
                         existing=db.execute(
                             "SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",

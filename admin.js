@@ -133,3 +133,17 @@ async function confirmPdfImport(event){
 const pdfConfirmButton=$('#student-pdf-confirm');
 if(pdfConfirmButton)pdfConfirmButton.onclick=confirmPdfImport;
 // O botão existe desde o carregamento da página; o vínculo direto garante o clique.
+
+// Remove a carga horária apenas dos seletores de disciplina do administrador.
+const adminSubjectSelects=['#score-subject','#collective-subject','#calendar-subject'];
+function removeSubjectHoursFromAdmin(){
+  for(const selector of adminSubjectSelects){
+    const select=$(selector);if(!select)continue;
+    for(const option of select.options)option.textContent=option.textContent.replace(/\s+—\s+\d+\s+h\/a$/i,'');
+  }
+}
+for(const selector of adminSubjectSelects){
+  const select=$(selector);
+  if(select)new MutationObserver(removeSubjectHoursFromAdmin).observe(select,{childList:true,subtree:true});
+}
+removeSubjectHoursFromAdmin();

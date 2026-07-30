@@ -263,6 +263,12 @@ function fieldValue(row,key){
 }
 
 function entryFieldMarkup(row,field){
+  if(field.type==='status')return`<label class="entry-field">
+    <span>${esc(field.label)}</span>
+    <select data-subject-id="${row.subject_id}" data-field="status" aria-label="${esc(field.label)} de ${esc(row.subject)}">
+      <option value="">Selecione</option><option${row.status==='Apto'?' selected':''}>Apto</option><option${row.status==='Inapto'?' selected':''}>Inapto</option>
+    </select>
+  </label>`;
   return`<label class="entry-field">
     <span>${esc(field.label)} <small>máx. ${field.max}</small></span>
     <input data-subject-id="${row.subject_id}" data-field="${field.key}" type="number" min="0" max="${field.max}" step="0.01" inputmode="decimal" value="${esc(fieldValue(row,field.key))}" aria-label="${esc(field.label)} de ${esc(row.subject)}">
@@ -279,7 +285,8 @@ function renderEntrySheet(sheet){
     return;
   }
   const selected=studentEntrySubject.value;
-  studentEntrySubject.innerHTML='<option value="">Selecione a disciplina</option>'+studentEntrySheet.map(row=>`<option value="${row.subject_id}">${esc(row.subject)}</option>`).join('');
+  studentEntrySheet.sort((a,b)=>a.subject.localeCompare(b.subject,'pt-BR'));
+  studentEntrySubject.innerHTML='<option value="">Selecione a disciplina</option>'+studentEntrySheet.map((row,index)=>`<option value="${row.subject_id}">${index+1}. ${esc(row.subject)}</option>`).join('');
   if(studentEntrySheet.some(row=>String(row.subject_id)===selected))studentEntrySubject.value=selected;
   const chosen=studentEntrySubject.value;
   studentEntryPanel.hidden=false;
@@ -299,6 +306,7 @@ function renderEntrySheet(sheet){
     const title=row.grading_mode==='taf'
       ?`TAF <small class="table-sub">${esc(row.subject)} • 3 avaliações</small>`
       :`${esc(row.subject)} <small class="table-sub">2 provas + trabalho</small>`;
+    if(row.grading_mode==='apt')return`<tr data-subject-id="${row.subject_id}"><td><strong>${esc(row.subject)}</strong></td><td colspan="3">${entryFieldMarkup(row,row.fields[0])}</td></tr>`;
     return`<tr data-subject-id="${row.subject_id}">
       <td><strong>${title}</strong></td>
       ${cell('exam1')}
