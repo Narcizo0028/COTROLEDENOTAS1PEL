@@ -1,6 +1,7 @@
 let exams=[];
 let studentSession=null;
-const VIEW_IDS=new Set(['inicio','calendario','notas']);
+const VIEW_IDS=new Set(['calendario','boletim','lancamento','senha']);
+const DEFAULT_VIEW='boletim';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const menuButton=document.querySelector('.menu-toggle');
@@ -20,10 +21,10 @@ const confirmPassword=document.querySelector('#student-confirm-password');
 const matchIndicator=document.querySelector('#password-match-indicator');
 const passwordSubmit=document.querySelector('#student-password-submit');
 const showPasswords=document.querySelector('#show-student-passwords');
-const gradesGuest=document.querySelector('#grades-guest');
-const gradesAuthed=document.querySelector('#grades-authed');
-const homeLoginPanel=document.querySelector('#home-login-panel');
-const homeSessionPanel=document.querySelector('#home-session-panel');
+const gradesGuests=[...document.querySelectorAll('.grades-guest')];
+const gradesAutheds=[...document.querySelectorAll('.grades-authed')];
+const lancamentoEmpty=document.querySelector('#lancamento-empty');
+const studentLogoutButton=document.querySelector('#student-logout-button');
 const views=[...document.querySelectorAll('[data-view]')];
 
 function closeMenu(){
@@ -53,16 +54,22 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&menu.classList.contains('open'))closeMenu();
 });
 
-function syncGradesPanels(){
+function syncStudentUi(){
   const loggedIn=Boolean(studentSession);
-  if(gradesGuest)gradesGuest.hidden=loggedIn;
-  if(gradesAuthed)gradesAuthed.hidden=!loggedIn;
-  if(homeLoginPanel)homeLoginPanel.hidden=loggedIn;
-  if(homeSessionPanel)homeSessionPanel.hidden=!loggedIn;
+  gradesGuests.forEach(el=>{el.hidden=loggedIn;});
+  gradesAutheds.forEach(el=>{el.hidden=!loggedIn;});
+  if(studentLogoutButton)studentLogoutButton.hidden=!loggedIn;
+  document.body.classList.toggle('student-logged-in',loggedIn);
+  if(lancamentoEmpty&&studentEntryPanel){
+    const hasSheet=loggedIn&&!studentEntryPanel.hidden;
+    lancamentoEmpty.hidden=hasSheet||!loggedIn;
+  }
 }
 
+const STUDENT_VIEWS=new Set(['boletim','lancamento','senha']);
+
 function showView(id,{updateHash=true}={}){
-  const viewId=VIEW_IDS.has(id)?id:'inicio';
+  const viewId=VIEW_IDS.has(id)?id:DEFAULT_VIEW;
   views.forEach(view=>{
     const active=view.dataset.view===viewId;
     view.classList.toggle('is-active',active);
@@ -71,7 +78,7 @@ function showView(id,{updateHash=true}={}){
   menu.querySelectorAll('[data-nav]').forEach(link=>{
     link.classList.toggle('active',link.dataset.nav===viewId);
   });
-  if(viewId==='notas')syncGradesPanels();
+  if(STUDENT_VIEWS.has(viewId))syncStudentUi();
   closeMenu();
   window.scrollTo({top:0,behavior:'auto'});
   if(updateHash){
@@ -81,8 +88,9 @@ function showView(id,{updateHash=true}={}){
 }
 
 function viewFromHash(){
-  const id=(location.hash||'#inicio').slice(1);
-  return VIEW_IDS.has(id)?id:'inicio';
+  const raw=(location.hash||`#${DEFAULT_VIEW}`).slice(1);
+  const mapped=raw==='notas'||raw==='inicio'?DEFAULT_VIEW:raw;
+  return VIEW_IDS.has(mapped)?mapped:DEFAULT_VIEW;
 }
 
 document.addEventListener('click',e=>{
@@ -154,7 +162,6 @@ showPasswords.addEventListener('change',()=>{
   const type=showPasswords.checked?'text':'password';
   newPassword.type=confirmPassword.type=type;
 });
-new MutationObserver(()=>{studentPasswordPanel.hidden=reportCard.hidden;}).observe(reportCard,{attributes:true,attributeFilter:['hidden']});
 
 studentPasswordForm.addEventListener('submit',async e=>{
   e.preventDefault();
@@ -264,6 +271,7 @@ function renderEntrySheet(sheet){
   if(!sheet?.length){
     studentEntryPanel.hidden=true;
     studentEntryTable.innerHTML='';
+    syncStudentUi();
     return;
   }
   const desktopRows=sheet.map(row=>{
@@ -316,6 +324,7 @@ function renderEntrySheet(sheet){
     </div>
     <div class="entry-cards-mobile">${mobileCards}</div>`;
   studentEntryPanel.hidden=false;
+  syncStudentUi();
 }
 
 function collectEntryPayload(){
@@ -339,21 +348,19 @@ function clearStudentSessionUi(messageText=''){
   studentEntryPanel.hidden=true;
   studentEntryTable.innerHTML='';
   studentEntryMessage.textContent='';
-  studentPasswordPanel.hidden=true;
   studentPasswordForm.reset();
   updatePasswordMatch();
   document.querySelector('#access-code').value='';
   document.querySelector('#form-message').textContent=messageText;
-  syncGradesPanels();
+  syncStudentUi();
 }
 
-const studentLogoutButton=document.querySelector('#student-logout-button');
 studentLogoutButton.addEventListener('click',async()=>{
   try{
     await fetch('/api/student/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   }finally{
     clearStudentSessionUi('Sessão encerrada com segurança.');
-    showView('inicio');
+    showView(DEFAULT_VIEW);
   }
 });
 
@@ -418,8 +425,8 @@ document.querySelector('#grade-form').addEventListener('submit',async e=>{
     renderReport(student);
     renderEntrySheet(student.entry_sheet||[]);
     studentEntryMessage.textContent='';
-    syncGradesPanels();
-    showView('notas');
+    syncStudentUi();
+    showView(student.must_change_password?'senha':'boletim');
   }catch{
     message.textContent='Matrícula ou código de acesso inválido.';
     clearStudentSessionUi('Matrícula ou código de acesso inválido.');
@@ -428,4 +435,4 @@ document.querySelector('#grade-form').addEventListener('submit',async e=>{
 
 document.querySelector('#current-year').textContent=new Date().getFullYear();
 showView(viewFromHash(),{updateHash:false});
-syncGradesPanels();
+syncStudentUi();
