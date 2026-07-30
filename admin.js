@@ -139,7 +139,10 @@ const adminSubjectSelects=['#score-subject','#collective-subject','#calendar-sub
 function removeSubjectHoursFromAdmin(){
   for(const selector of adminSubjectSelects){
     const select=$(selector);if(!select)continue;
-    for(const option of select.options)option.textContent=option.textContent.replace(/\s+—\s+\d+\s+h\/a$/i,'');
+    for(const option of select.options){
+      const cleanText=option.textContent.replace(/\s+—\s+\d+\s+h\/a$/i,'');
+      if(cleanText!==option.textContent)option.textContent=cleanText;
+    }
   }
 }
 for(const selector of adminSubjectSelects){
