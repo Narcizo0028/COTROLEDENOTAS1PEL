@@ -563,7 +563,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("Selecione uma disciplina e envie o resultado.")
                 with connect() as db:
                     if not student_entry_enabled(db):
-                        raise ValueError("O lanÃ§amento de notas pelos discentes estÃ¡ indisponÃ­vel no momento.")
+                        raise ValueError("O lançamento de notas pelos discentes está indisponível no momento.")
                     allowed={row["id"]:dict(row) for row in db.execute(
                         "SELECT id,name,exam_count,grading_mode FROM subjects ORDER BY name"
                     )}
@@ -761,7 +761,7 @@ class Handler(SimpleHTTPRequestHandler):
             with connect() as db:
                 if self.path=="/api/admin/student-entry":
                     enabled=data.get("enabled")
-                    if not isinstance(enabled,bool):raise ValueError("Informe se o lanÃ§amento deve ficar disponÃ­vel ou indisponÃ­vel.")
+                    if not isinstance(enabled,bool):raise ValueError("Informe se o lançamento deve ficar disponível ou indisponível.")
                     db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
                     db.commit()
                     self.output({"ok":True,"student_entry_enabled":enabled});return
@@ -805,14 +805,14 @@ class Handler(SimpleHTTPRequestHandler):
                     elif mode=='taf': exam1=number('exam1',3);exam2=number('exam2',3);work=number('work',4)
                     elif sub[0]==1: exam1=None;exam2=number("exam2",7);work=number("work",3)
                     else: exam1=number("exam1",3);exam2=number("exam2",4);work=number("work",3)
+                    existing=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
+                    exam1,exam2,work,status=merge_student_score(existing,exam1,exam2,work,status,mode,sub[0])
                     save_score(db,sid,subject_id,exam1,exam2,work,status)
                     db.commit()
-                    if status is not None or exam1 is not None or exam2 is not None or work is not None:
-                        confirmed=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
-                        if not confirmed:raise sqlite3.Error('A conferência da nota gravada não foi concluída.')
-                    else:
-                        if db.execute("SELECT 1 FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone():
-                            raise sqlite3.Error('A limpeza da nota não foi concluída.')
+                    confirmed=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
+                    expected_empty=status is None and exam1 is None and exam2 is None and work is None
+                    if (expected_empty and confirmed) or (not expected_empty and not score_matches(confirmed,exam1,exam2,work,status)):
+                        raise sqlite3.Error('A conferência exata da nota gravada não foi concluída.')
                 elif self.path=="/api/admin/logout":
                     cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);self.output({"ok":True},cookie="efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");return
                 else:self.output({"error":"Rota inexistente."},404);return
