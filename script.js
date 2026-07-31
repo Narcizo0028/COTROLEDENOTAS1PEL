@@ -262,7 +262,7 @@ function renderStudentRanking(items=[]){
   if(!studentRankingList)return;
   studentRankingList.innerHTML=items.length?`<div class="table-wrap"><table class="grade-table student-ranking-table">
     <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th></tr></thead>
-    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-hidden="true">████████████</span><span class="sr-only">Nome censurado</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmt(item.average)}</td></tr>`).join('')}</tbody>
+    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmt(item.average)}</td></tr>`).join('')}</tbody>
   </table></div>`:'<p class="empty-state">Nenhum discente disponível no ranking.</p>';
 }
 
