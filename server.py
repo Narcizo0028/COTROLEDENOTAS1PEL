@@ -415,8 +415,8 @@ def ranking(db):
     return result
 
 def student_ranking_view(rows):
-    """Expõe ao portal somente os campos permitidos, sem observações ou matrículas."""
-    return [{key:item[key] for key in ("position","name","points","distributed","average")} for item in rows]
+    """Expõe somente colocação e pontuação, sem qualquer dado identificador."""
+    return [{key:item[key] for key in ("position","points","distributed","average")} for item in rows]
 
 def notes_report_pdf(db):
     """Gera o relatório administrativo de lançamentos em PDF."""
