@@ -499,7 +499,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 
 .ranking-privacy-note { margin: -8px 0 22px; color: var(--muted); }
-.student-ranking-list { padding: clamp(16px,3vw,28px); background:#fff; border:1px solid #d8cfb7; border-top:5px solid var(--gold); border-radius:var(--radius); box-shadow:var(--shadow); }
+.student-ranking-list { padding: clamp(16px,3vw,28px); color:var(--text); background:#fff; border:1px solid #d8cfb7; border-top:5px solid var(--gold); border-radius:var(--radius); box-shadow:var(--shadow); }
+.student-ranking-table td,.student-ranking-table td strong { color:var(--text); }
 .student-ranking-table th,.student-ranking-table td { vertical-align:middle; }
 .ranking-student-name { display:inline-block; color:var(--black); font-size:.78rem; letter-spacing:-.08em; user-select:none; pointer-events:none; white-space:nowrap; }
 .student-ranking-mobile { display:none; }
