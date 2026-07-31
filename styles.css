@@ -465,6 +465,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .main-nav a[href="#boletim"]::before { content: "⌂"; }
   .main-nav a[href="#calendario"]::before { content: "▦"; }
   .main-nav a[href="#lancamento"]::before { content: "✎"; }
+  .main-nav a[href="#ranking"]::before { content: "★"; }
   .main-nav a[href="#senha"]::before { content: "🔒"; }
   .main-nav a[href="admin.html"]::before,
   .main-nav .nav-admin::before { content: "⚙"; }
@@ -496,6 +497,12 @@ button, a { -webkit-tap-highlight-color: transparent; }
     padding-top: 14px;
   }
 }
+
+.ranking-privacy-note { margin: -8px 0 22px; color: var(--muted); }
+.student-ranking-list { padding: clamp(16px,3vw,28px); background:#fff; border:1px solid #d8cfb7; border-top:5px solid var(--gold); border-radius:var(--radius); box-shadow:var(--shadow); }
+.student-ranking-table th,.student-ranking-table td { vertical-align:middle; }
+.ranking-student-name { display:inline-block; max-width:260px; filter:blur(6px); user-select:none; pointer-events:none; opacity:.72; white-space:nowrap; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
 @media (max-width: 600px) {
   .admin-panel {

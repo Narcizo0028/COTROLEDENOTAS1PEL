@@ -414,6 +414,10 @@ def ranking(db):
         last=row["points"]; item=dict(row); item["position"]=position; item["average"]=round(row["points"]/row["subjects_count"],2) if row["subjects_count"] else 0; result.append(item)
     return result
 
+def student_ranking_view(rows):
+    """Expõe ao portal somente os campos permitidos, sem observações ou matrículas."""
+    return [{key:item[key] for key in ("position","name","points","distributed","average")} for item in rows]
+
 def notes_report_pdf(db):
     """Gera o relatório administrativo de lançamentos em PDF."""
     from reportlab.lib import colors
@@ -519,8 +523,8 @@ class Handler(SimpleHTTPRequestHandler):
                 scores=[dict(x) for x in db.execute("SELECT sub.id subject_id,sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(student["id"],))]
                 entry_enabled=student_entry_enabled(db)
                 entry_sheet=student_entry_sheet(db,student["id"]) if entry_enabled else []
-                own=next((x for x in ranking(db) if x["id"]==student["id"]),None)
-            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"ranking":{k:own[k] for k in ("position","points","distributed","average")}},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
+                complete_ranking=ranking(db);own=next((x for x in complete_ranking if x["id"]==student["id"]),None)
+            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"ranking":{k:own[k] for k in ("position","points","distributed","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
         if self.path=="/api/student/password":
             sid=self.student()
             if not sid:self.output({"error":"Sessão expirada. Consulte suas notas novamente."},401);return
@@ -580,7 +584,7 @@ class Handler(SimpleHTTPRequestHandler):
                             raise sqlite3.Error("A gravação não pôde ser confirmada no banco de dados. Tente novamente.")
                     sheet=student_entry_sheet(db,sid)
                     scores=[dict(x) for x in db.execute("SELECT sub.id subject_id,sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(sid,))]
-                    own=next((x for x in ranking(db) if x["id"]==sid),None)
+                    complete_ranking=ranking(db);own=next((x for x in complete_ranking if x["id"]==sid),None)
                 self.output({
                     "ok":True,
                     "saved":saved,
@@ -589,6 +593,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "entry_sheet":sheet,
                     "scores":scores,
                     "ranking":{k:own[k] for k in ("position","points","distributed","average")} if own else None,
+                    "ranking_list":student_ranking_view(complete_ranking),
                 });return
             except (ValueError,TypeError,sqlite3.Error) as error:
                 self.output({"error":str(error)},400);return

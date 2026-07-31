@@ -1,7 +1,7 @@
 let exams=[];
 let studentSession=null;
 let studentEntrySheet=[];
-const VIEW_IDS=new Set(['calendario','boletim','lancamento','senha']);
+const VIEW_IDS=new Set(['calendario','boletim','lancamento','ranking','senha']);
 const DEFAULT_VIEW='boletim';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -15,6 +15,7 @@ const studentEntryPanel=document.querySelector('#student-entry-panel');
 const studentEntryForm=document.querySelector('#student-entry-form');
 const studentEntryTable=document.querySelector('#student-entry-table');
 const studentEntryMessage=document.querySelector('#student-entry-message');
+const studentRankingList=document.querySelector('#student-ranking-list');
 const studentEntrySubject=document.querySelector('#student-entry-subject');
 const studentPasswordPanel=document.querySelector('#student-password-panel');
 const studentPasswordForm=document.querySelector('#student-password-form');
@@ -68,7 +69,7 @@ function syncStudentUi(){
   }
 }
 
-const STUDENT_VIEWS=new Set(['boletim','lancamento','senha']);
+const STUDENT_VIEWS=new Set(['boletim','lancamento','ranking','senha']);
 
 function showView(id,{updateHash=true}={}){
   const viewId=VIEW_IDS.has(id)?id:DEFAULT_VIEW;
@@ -257,6 +258,14 @@ function renderReport(student){
   reportCard.hidden=false;
 }
 
+function renderStudentRanking(items=[]){
+  if(!studentRankingList)return;
+  studentRankingList.innerHTML=items.length?`<div class="table-wrap"><table class="grade-table student-ranking-table">
+    <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th></tr></thead>
+    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-hidden="true">${esc(item.name)}</span><span class="sr-only">Nome protegido</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmt(item.average)}</td></tr>`).join('')}</tbody>
+  </table></div>`:'<p class="empty-state">Nenhum discente disponível no ranking.</p>';
+}
+
 function fieldValue(row,key){
   const value=row[key];
   return value==null||value===''?'':String(value);
@@ -352,6 +361,7 @@ function renderEntrySheet(sheet){
 
 studentEntrySubject.addEventListener('change',()=>{
   studentEntryMessage.textContent='';
+  if(studentRankingList)studentRankingList.innerHTML='';
   renderEntrySheet(studentEntrySheet);
 });
 
@@ -421,7 +431,9 @@ studentEntryForm.addEventListener('submit',async e=>{
       studentSession.scores=data.scores||[];
       studentSession.entry_sheet=data.entry_sheet||[];
       if(data.ranking)studentSession.ranking=data.ranking;
+      if(data.ranking_list)studentSession.ranking_list=data.ranking_list;
       renderReport(studentSession);
+      renderStudentRanking(studentSession.ranking_list||[]);
     }
     renderEntrySheet(data.entry_sheet);
     studentEntryMessage.classList.remove('is-error');
@@ -453,6 +465,7 @@ document.querySelector('#grade-form').addEventListener('submit',async e=>{
     studentSession=student;
     message.textContent='';
     renderReport(student);
+    renderStudentRanking(student.ranking_list||[]);
     renderEntrySheet(student.entry_sheet||[]);
     studentEntryMessage.textContent='';
     syncStudentUi();
