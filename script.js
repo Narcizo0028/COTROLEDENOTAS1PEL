@@ -260,10 +260,14 @@ function renderReport(student){
 
 function renderStudentRanking(items=[]){
   if(!studentRankingList)return;
-  studentRankingList.innerHTML=items.length?`<div class="table-wrap"><table class="grade-table student-ranking-table">
+  studentRankingList.innerHTML=items.length?`<div class="table-wrap student-ranking-desktop"><table class="grade-table student-ranking-table">
     <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th></tr></thead>
     <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmt(item.average)}</td></tr>`).join('')}</tbody>
-  </table></div>`:'<p class="empty-state">Nenhum discente disponível no ranking.</p>';
+  </table></div><div class="student-ranking-mobile">${items.map(item=>`<article class="ranking-mobile-card">
+    <div class="ranking-mobile-position"><span>Colocação</span><strong>${item.position}º</strong></div>
+    <div class="ranking-mobile-identity"><span>Discente</span><strong class="ranking-student-name" aria-label="Identidade protegida">████████████</strong></div>
+    <dl><div><dt>Pontos obtidos</dt><dd>${fmt(item.points)}</dd></div><div><dt>Pontos distribuídos</dt><dd>${fmt(item.distributed)}</dd></div><div><dt>Média</dt><dd>${fmt(item.average)}</dd></div></dl>
+  </article>`).join('')}</div>`:'<p class="empty-state">Nenhum discente disponível no ranking.</p>';
 }
 
 function fieldValue(row,key){
