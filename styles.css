@@ -660,3 +660,34 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .report-table-desktop,
   .entry-table-desktop { display: block; }
 }
+
+/* Restrição do lançamento discente por disciplina */
+.student-subject-restriction {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #faf8f2;
+}
+.restriction-switch { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.restriction-switch input { width: 20px; height: 20px; accent-color: var(--gold); }
+.restriction-controls { display: grid; grid-template-columns: minmax(180px, 1fr) auto; gap: 8px 12px; align-items: end; }
+.restriction-controls label { grid-column: 1 / -1; margin: 0; }
+.restriction-controls select { min-height: 46px; }
+.restriction-highlight {
+  display: block;
+  margin: 0;
+  padding: 11px 14px;
+  border-left: 4px solid var(--gold);
+  border-radius: 8px;
+  color: #3d3217;
+  background: #f2ead1;
+}
+.restriction-highlight[hidden] { display: none; }
+@media (max-width: 720px) {
+  .restriction-controls { grid-template-columns: 1fr; }
+  .restriction-controls label { grid-column: auto; }
+  .restriction-controls .button { width: 100%; }
+}
