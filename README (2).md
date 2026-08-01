@@ -6,7 +6,7 @@
   <meta name="description" content="Portal institucional para consulta de calendário de provas e notas finais do CFS — 1º Pelotão.">
   <meta name="theme-color" content="#1d1c18">
   <title>Controle de Notas | CFS — 1º Pelotão</title>
-  <link rel="stylesheet" href="styles.css?v=20260731-08">
+  <link rel="stylesheet" href="styles.css?v=20260731-06">
 </head>
 <body class="portal-app">
   <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -89,7 +89,6 @@
         <div id="lancamento-authed" class="grades-authed" hidden>
           <h2 class="view-title">Lançar notas</h2>
           <section id="student-entry-panel" class="student-entry-panel" hidden aria-labelledby="student-entry-title">
-            <p id="student-subject-restriction-notice" class="restriction-highlight" hidden>Lançamento liberado somente para esta disciplina</p>
             <form id="student-entry-form">
               <label class="student-entry-subject-label" for="student-entry-subject">Disciplina
                 <select id="student-entry-subject" required>
@@ -157,6 +156,6 @@
   <footer class="site-footer site-footer-compact">
     <div class="container copyright">© <span id="current-year"></span> CFS — 1º Pelotão</div>
   </footer>
-  <script src="script.js?v=20260731-07" defer></script>
+  <script src="script.js?v=20260731-05" defer></script>
 </body>
 </html>
