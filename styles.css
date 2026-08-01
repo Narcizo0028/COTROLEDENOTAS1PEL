@@ -662,31 +662,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 
 /* Restrição do lançamento discente por disciplina */
-.admin-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 22px 0;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
-}
-.admin-tab-button {
-  min-height: 52px;
-  padding: 10px 14px;
-  border: 0;
-  border-radius: 10px;
-  color: var(--text);
-  background: transparent;
-  font: 700 .92rem/1.25 "Segoe UI", Arial, sans-serif;
-  cursor: pointer;
-}
-.admin-tab-button:hover { background: var(--off-white); }
-.admin-tab-button.active { color: #fff; background: var(--black); box-shadow: 0 6px 16px rgba(0,0,0,.14); }
-.admin-tab-button:focus-visible { outline: 3px solid rgba(176,148,77,.45); outline-offset: 2px; }
-.admin-tab-panel { display: grid; gap: 22px; }
-.admin-tab-panel[hidden] { display: none !important; }
 .student-subject-restriction { display: grid; gap: 12px; }
 .restriction-heading .eyebrow { margin-bottom: 8px; }
 .restriction-heading h2 { margin: 0 0 10px; font-size: clamp(1.35rem, 2vw, 1.8rem); }
@@ -699,8 +674,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .restriction-highlight { display: block; width: 100%; margin: 0; padding: 11px 14px; border-left: 4px solid var(--gold); border-radius: 8px; color: #3d3217; background: #f2ead1; box-sizing: border-box; }
 .restriction-highlight[hidden] { display: none; }
 @media (max-width: 720px) {
-  .admin-tabs { grid-template-columns: 1fr; gap: 5px; }
-  .admin-tab-button { min-height: 46px; text-align: left; }
   .restriction-controls { grid-template-columns: 1fr; }
   .restriction-controls .button { width: 100%; }
 }
