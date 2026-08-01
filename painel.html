@@ -1,165 +1,206 @@
-const $=selector=>document.querySelector(selector),esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=value=>Number(value).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});let cache={subjects:[],students:[],scores:[]},scoreMode='subject',pdfImportStudentId='';
-function setupAdminTabs(){const dashboard=$('#dashboard'),warning=$('#initial-warning');if(!dashboard||$('#admin-tabs'))return;const navigation=document.createElement('nav');navigation.id='admin-tabs';navigation.className='admin-tabs';navigation.setAttribute('aria-label','Seções administrativas');navigation.innerHTML=`<button class="admin-tab-button active" type="button" data-admin-tab="grades" aria-selected="true" aria-controls="admin-tab-grades">Lançamento de notas</button><button class="admin-tab-button" type="button" data-admin-tab="calendar" aria-selected="false" aria-controls="admin-tab-calendar">Calendário de provas</button><button class="admin-tab-button" type="button" data-admin-tab="ranking" aria-selected="false" aria-controls="admin-tab-ranking">Ranking completo do pelotão</button>`;warning.insertAdjacentElement('afterend',navigation);const makePanel=(id,label)=>{const panel=document.createElement('section');panel.id=id;panel.className='admin-tab-panel';panel.setAttribute('role','tabpanel');panel.setAttribute('aria-label',label);dashboard.append(panel);return panel},grades=makePanel('admin-tab-grades','Lançamento de notas'),calendar=makePanel('admin-tab-calendar','Calendário de provas'),ranking=makePanel('admin-tab-ranking','Ranking completo do pelotão');calendar.hidden=true;ranking.hidden=true;const move=(panel,selector)=>{const element=$(selector);if(element)panel.append(element)};move(grades,'.score-mode-panel');move(grades,'.compact-grid');move(grades,'#collective-score-form');move(grades,'.pdf-score-import-panel');move(grades,'.student-subject-restriction');const scoresContainer=$('#scores-data')?.closest('.data-panel');if(scoresContainer)grades.append(scoresContainer);move(calendar,'#exam-form');move(calendar,'#calendar-import-form');const rankingContainer=$('#ranking-data')?.closest('.data-panel');if(rankingContainer)ranking.append(rankingContainer);const activate=name=>{document.querySelectorAll('.admin-tab-button').forEach(button=>{const active=button.dataset.adminTab===name;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active))});document.querySelectorAll('.admin-tab-panel').forEach(panel=>panel.hidden=panel.id!==`admin-tab-${name}`)};navigation.addEventListener('click',event=>{const button=event.target.closest('[data-admin-tab]');if(button)activate(button.dataset.adminTab)});activate('grades')}
-setupAdminTabs();
-async function api(path,options={}){const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}),data=await response.json().catch(()=>({}));if(!response.ok){const error=new Error(data.error||'Não foi possível concluir a operação.');error.logs=Array.isArray(data.logs)?data.logs:[];error.userAction=data.user_action||'';throw error}return data}
-async function saveScoreResult(payload){return api('/api/admin/score',{method:'POST',body:JSON.stringify(payload)})}
-function closeAdminFeedback(){const dialog=$('#admin-feedback-dialog');if(!dialog)return;if(typeof dialog.close==='function')dialog.close();else dialog.removeAttribute('open')}
-function showAdminFeedback({title='Aviso',eyebrow='Aviso',message='',userAction='',logs=[],tone='info'}={}){const dialog=$('#admin-feedback-dialog'),content=$('#admin-feedback-content');if(!dialog||!content){window.alert([message,userAction].filter(Boolean).join('\n\n'));return}$('#admin-feedback-eyebrow').textContent=eyebrow;$('#admin-feedback-title').textContent=title;const logItems=(logs||[]).map(item=>{const level=String(item.level||'info').toLowerCase();return`<li class="log-${esc(level)}"><span class="log-level">${esc(level)}</span><div><div>${esc(item.message||'')}</div>${item.at?`<div class="log-meta">${esc(item.at)}</div>`:''}</div></li>`}).join('');content.innerHTML=`${message?`<p>${esc(message)}</p>`:''}${userAction?`<div class="admin-feedback-action"><strong>O que você deve fazer</strong><span>${esc(userAction)}</span></div>`:''}${logItems?`<p><strong>Detalhes para ajuste</strong></p><ul class="admin-feedback-logs">${logItems}</ul>`:''}`;dialog.dataset.tone=tone;if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')}
-$('#admin-feedback-close')?.addEventListener('click',closeAdminFeedback);$('#admin-feedback-close-bottom')?.addEventListener('click',closeAdminFeedback);$('#admin-feedback-dialog')?.addEventListener('click',event=>{if(event.target===$('#admin-feedback-dialog'))closeAdminFeedback()});
-function dashboard(user){$('#login-panel').hidden=true;$('#dashboard').hidden=false;$('#initial-warning').hidden=!user.must_change_password;loadData()}
-async function check(){try{dashboard(await api('/api/admin/session'))}catch{$('#login-panel').hidden=false;$('#dashboard').hidden=true}}
-$('#admin-login-form').addEventListener('submit',async e=>{e.preventDefault();try{dashboard(await api('/api/admin/login',{method:'POST',body:JSON.stringify({username:$('#admin-user').value.trim(),password:$('#admin-password').value})}))}catch(error){$('#login-message').textContent=error.message}});
-function bindForm(selector,path,success,preserve=[]){$(selector).addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,message=form.querySelector('.panel-message'),names=typeof preserve==='function'?preserve():preserve,kept=Object.fromEntries(names.map(name=>[name,form.elements[name]?.value||''])),payload=Object.fromEntries(new FormData(form));try{if(path==='/api/admin/score')await saveScoreResult(payload);else await api(path,{method:'POST',body:JSON.stringify(payload)});message.textContent=success;form.reset();await loadData();for(const[name,value]of Object.entries(kept))if(form.elements[name])form.elements[name].value=value;if(selector==='#score-form'){updateRule();updateObservation();$(scoreMode==='student'?'#score-subject':'#score-student').focus()}}catch(error){message.textContent=error.message}})}
-bindForm('#student-form','/api/admin/student','Discente salvo com sucesso.');bindForm('#score-form','/api/admin/score','Notas salvas com sucesso.',()=>scoreMode==='student'?['student_id']:['subject_id']);bindForm('#exam-form','/api/admin/exams','Data cadastrada no calendário.');
-$('#password-form').addEventListener('submit',async e=>{e.preventDefault();const message=e.currentTarget.querySelector('.panel-message');try{await api('/api/admin/password',{method:'POST',body:JSON.stringify({password:$('#new-password').value})});message.textContent='Senha alterada.';$('#initial-warning').hidden=true;e.currentTarget.reset()}catch(error){message.textContent=error.message}});
-function updateRule(){const subject=cache.subjects.find(x=>String(x.id)===$('#score-subject').value);if(!subject)return;const apt=subject.grading_mode==='apt',taf=subject.grading_mode==='taf',two=subject.exam_count===2;const exam1=$('#score-form [name=exam1]'),exam2=$('#score-form [name=exam2]'),work=$('#score-form [name=work]'),status=$('#score-form [name=status]');$('#status-label').hidden=!apt;$('.score-fields').hidden=apt;status.disabled=!apt;if(!apt)status.value='';if(apt){for(const input of [exam1,exam2,work]){input.value='';input.disabled=true}$('#score-rule').textContent='Resultado qualitativo: selecione Apto ou Inapto. Esta disciplina não integra a pontuação do ranking.';return}exam1.disabled=!taf&&!two;exam2.disabled=false;work.disabled=false;if(exam1.disabled)exam1.value='';$('#exam1-label .field-name').textContent=taf?'1º TAF':'Avaliação Complementar (AVC)';$('#exam2-label .field-name').textContent=taf?'2º TAF':'Avaliação Final (AVF)';$('#work-label .field-name').textContent=taf?'3º TAF':'Trabalho';$('#exam1-max').textContent='(máx. 3)';$('#exam2-max').textContent=`(máx. ${taf?3:two?4:7})`;$('#work-max').textContent=`(máx. ${taf?4:3})`;exam1.max=3;exam2.max=taf?3:two?4:7;work.max=taf?4:3;$('#exam1-label').hidden=!taf&&!two;$('#exam2-label').hidden=false;$('#score-rule').textContent=taf?'Educação Física: 1º TAF 3 pontos • 2º TAF 3 pontos • 3º TAF 4 pontos':two?'AVC: 3 pontos • AVF: 4 pontos • Trabalho: 3 pontos':'AVF: 7 pontos • Trabalho: 3 pontos'}
-function updateCalendarTypes(){const subject=cache.subjects.find(x=>x.name===$('#calendar-subject').value);if(!subject)return;const types=subject.grading_mode==='apt'?['Resultado Apto/Inapto']:subject.grading_mode==='taf'?['1º TAF','2º TAF','3º TAF']:subject.exam_count===1?['Avaliação Final (AVF)','Trabalho']:['Avaliação Complementar (AVC)','Avaliação Final (AVF)','Trabalho'];$('#calendar-type').innerHTML=types.map(x=>`<option>${esc(x)}</option>`).join('')}
-const oldObservationLabel=$('#score-observation').closest('label'),observationControls=document.createElement('div');
-oldObservationLabel.remove();
-observationControls.className='observation-controls';
-observationControls.innerHTML=`<div class="observation-action-buttons"><button id="add-observation-button" class="button button-dark" type="button">Adicionar observação</button><button id="delete-observation-button" class="button button-danger" type="button">Excluir observação</button></div><div id="observation-editor" class="observation-editor" hidden><label>Observação individual<textarea id="independent-observation" rows="4" placeholder="Digite a informação que será exibida ao discente."></textarea></label><div class="observation-editor-actions"><button id="save-observation-button" class="button button-dark" type="button">Salvar observação</button><button id="cancel-observation-button" class="button button-outline-dark" type="button">Cancelar</button></div></div>`;
-$('#score-form > .button-gold').insertAdjacentElement('afterend',observationControls);
-const observationAddButton=$('#add-observation-button'),observationDeleteButton=$('#delete-observation-button'),observationEditor=$('#observation-editor'),independentObservation=$('#independent-observation');
-function updateObservation(){independentObservation.value='';observationEditor.hidden=true;const disabled=!$('#score-student').value;observationAddButton.disabled=disabled;observationDeleteButton.disabled=disabled}
-observationAddButton.addEventListener('click',()=>{const sid=$('#score-student').value,message=$('#score-form .panel-message');if(!sid){message.textContent='Selecione um discente antes de adicionar a observação.';return}independentObservation.value='';observationEditor.hidden=false;independentObservation.focus()});
-$('#cancel-observation-button').addEventListener('click',()=>{independentObservation.value='';observationEditor.hidden=true});
-$('#save-observation-button').addEventListener('click',async()=>{const sid=$('#score-student').value,observation=independentObservation.value.trim(),message=$('#score-form .panel-message'),button=$('#save-observation-button');if(!sid){message.textContent='Selecione um discente antes de salvar a observação.';return}if(!observation){message.textContent='Digite a observação antes de salvar.';independentObservation.focus();return}button.disabled=true;message.textContent='Salvando observação...';try{const result=await api('/api/admin/observation/save',{method:'POST',body:JSON.stringify({student_id:sid,observation})});const student=cache.students.find(item=>String(item.id)===String(sid));if(student)student.observation=result.observation;independentObservation.value='';observationEditor.hidden=true;message.textContent='Observação salva com sucesso.'}catch(error){message.textContent=error.message}finally{button.disabled=false}});
-observationDeleteButton.addEventListener('click',async()=>{const sid=$('#score-student').value,message=$('#score-form .panel-message');if(!sid){message.textContent='Selecione um discente antes de excluir a observação.';return}const student=cache.students.find(item=>String(item.id)===String(sid));if(!window.confirm(`Excluir definitivamente a observação de ${student?.name||'este discente'}?`))return;observationDeleteButton.disabled=true;message.textContent='Excluindo observação...';try{await api('/api/admin/observation/delete',{method:'POST',body:JSON.stringify({student_id:sid})});if(student)student.observation='';independentObservation.value='';observationEditor.hidden=true;message.textContent='Observação excluída com sucesso.'}catch(error){message.textContent=error.message}finally{observationDeleteButton.disabled=false}});
-function updateScoreValues(){const studentId=$('#score-student').value,subjectId=$('#score-subject').value,score=cache.scores.find(x=>String(x.student_id)===studentId&&String(x.subject_id)===subjectId),form=$('#score-form');for(const field of ['exam1','exam2','work','status']){const input=form.elements[field];if(input&&!input.disabled)input.value=score?.[field]??''}}
-function openStudentDetails(studentId){const student=cache.students.find(x=>String(x.id)===String(studentId)),ranking=cache.ranking.find(x=>String(x.id)===String(studentId));if(!student)return;const scores=cache.scores.filter(x=>String(x.student_id)===String(studentId)).sort((a,b)=>a.subject.localeCompare(b.subject,'pt-BR')),content=$('#student-details-content');$('#student-details-title').textContent=student.name;content.innerHTML=`<div class="student-details-summary"><p><strong>${esc(student.rank)}</strong><span>Matrícula ${esc(student.id)}</span></p>${ranking?`<div><span>Colocação</span><strong>${ranking.position}º</strong></div><div><span>Pontos</span><strong>${fmt(ranking.points)} / ${fmt(ranking.distributed)}</strong></div><div><span>Média</span><strong>${fmt(ranking.average)}</strong></div>`:''}</div>${scores.length?`<div class="table-wrap"><table class="grade-table student-details-table"><thead><tr><th>Disciplina</th><th>AVC / 1º TAF</th><th>AVF / 2º TAF</th><th>Trabalho / 3º TAF</th><th>Total ou resultado</th></tr></thead><tbody>${scores.map(score=>{const apt=score.grading_mode==='apt',total=(score.exam1||0)+(score.exam2||0)+(score.work||0);return`<tr><td><strong>${esc(score.subject)}</strong></td><td>${apt||score.exam1==null?'—':fmt(score.exam1)}</td><td>${apt||score.exam2==null?'—':fmt(score.exam2)}</td><td>${apt||score.work==null?'—':fmt(score.work)}</td><td><strong>${apt?esc(score.status||'Não lançado'):fmt(total)}</strong></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty-student-scores"><strong>Nenhuma nota lançada</strong><p>Este discente ainda não possui matérias com pontos ou resultados cadastrados.</p></div>'}${student.observation?`<div class="student-observation"><strong>Observação</strong><p>${esc(student.observation)}</p></div>`:''}`;const dialog=$('#student-details-dialog');if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')}
-function closeStudentDetails(){const dialog=$('#student-details-dialog');if(typeof dialog.close==='function')dialog.close();else dialog.removeAttribute('open')}
-function setScoreMode(mode){scoreMode=mode;document.querySelectorAll('.score-mode-button').forEach(button=>{const active=button.dataset.scoreMode===mode;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))});const collective=mode==='collective';$('#score-form').hidden=collective;$('#collective-score-form').hidden=!collective;if(mode==='student'){$('#individual-score-title').textContent='Lançamento por discente';$('#individual-score-help').textContent='O discente permanecerá selecionado após salvar; escolha a próxima matéria.';$('#score-student').focus()}else if(mode==='subject'){$('#individual-score-title').textContent='Lançamento individual por matéria';$('#individual-score-help').textContent='A matéria permanecerá selecionada após salvar; escolha o próximo discente.';$('#score-subject').focus()}else{$('#collective-subject').focus();renderCollectiveScores()}}
-function updateStudentEntryToggle(enabled){const button=$('#student-entry-toggle-button'),message=$('#student-entry-toggle-message');button.dataset.enabled=String(enabled);button.classList.toggle('available',enabled);button.classList.toggle('unavailable',!enabled);button.setAttribute('aria-pressed',String(enabled));button.textContent=enabled?'Disponível':'Indisponível';message.textContent=enabled?'Os discentes podem lançar notas.':'O lançamento pelos discentes está bloqueado.';if(cache.subjects?.length)renderStudentSubjectRestriction(cache.student_subject_restriction)}
-$('#student-entry-toggle-button').addEventListener('click',async e=>{const button=e.currentTarget,message=$('#student-entry-toggle-message'),enabled=button.dataset.enabled!=='true';button.disabled=true;message.textContent='Salvando configuração...';try{const result=await api('/api/admin/student-entry',{method:'POST',body:JSON.stringify({enabled})});cache.student_entry_enabled=Boolean(result.student_entry_enabled);updateStudentEntryToggle(cache.student_entry_enabled)}catch(error){message.textContent=error.message}finally{button.disabled=false}});
-function renderStudentSubjectRestriction(config=cache.student_subject_restriction||{}){const enabled=Boolean(config.enabled),checkbox=$('#student-subject-restriction-enabled'),select=$('#student-subject-restriction-select'),highlight=$('#student-subject-restriction-highlight'),message=$('#student-subject-restriction-message');checkbox.checked=enabled;select.disabled=!enabled;select.innerHTML='<option value="">Selecione uma disciplina</option>'+cache.subjects.map(subject=>`<option value="${subject.id}">${esc(subject.name)}</option>`).join('');if(config.subject_id)select.value=String(config.subject_id);highlight.hidden=!enabled;highlight.textContent=enabled?`Lançamento liberado somente para esta disciplina: ${config.subject_name||select.options[select.selectedIndex]?.text||''}`:'Lançamento liberado somente para esta disciplina';message.textContent=enabled?'As demais disciplinas estão bloqueadas para os discentes.':'Todas as disciplinas estão disponíveis quando o lançamento pelo discente estiver autorizado.'}
-$('#student-subject-restriction-enabled').addEventListener('change',event=>{const enabled=event.currentTarget.checked;$('#student-subject-restriction-select').disabled=!enabled;$('#student-subject-restriction-message').textContent=enabled?'Selecione uma disciplina e salve a restrição.':'Clique em Salvar restrição para liberar novamente todas as disciplinas.'});
-$('#student-subject-restriction-save').addEventListener('click',async event=>{const button=event.currentTarget,enabled=$('#student-subject-restriction-enabled').checked,subjectId=$('#student-subject-restriction-select').value,message=$('#student-subject-restriction-message'),current=cache.student_subject_restriction||{};if(enabled&&!subjectId){message.textContent='Selecione uma disciplina antes de ativar a restrição.';$('#student-subject-restriction-select').focus();return}const changingSubject=Boolean(current.enabled)&&enabled&&String(current.subject_id)!==String(subjectId);if(changingSubject){const next=cache.subjects.find(subject=>String(subject.id)===String(subjectId));if(!window.confirm(`Alterar a disciplina liberada para “${next?.name||'a disciplina selecionada'}”? As demais ficarão bloqueadas para os discentes.`)){renderStudentSubjectRestriction(current);return}}button.disabled=true;message.textContent='Salvando configuração...';try{const result=await api('/api/admin/student-entry-restriction',{method:'POST',body:JSON.stringify({enabled,subject_id:enabled?subjectId:null})});cache.student_subject_restriction=result.student_subject_restriction;renderStudentSubjectRestriction(cache.student_subject_restriction);message.textContent=enabled?'Restrição salva com sucesso.':'Restrição desativada. Todas as disciplinas voltaram a ficar disponíveis.'}catch(error){message.textContent=error.message;renderStudentSubjectRestriction(current)}finally{button.disabled=false}});
-function collectiveFields(subject){if(subject.grading_mode==='apt')return[{key:'status',label:'Resultado',type:'status'}];if(subject.grading_mode==='taf')return[{key:'exam1',label:'1º TAF',max:3},{key:'exam2',label:'2º TAF',max:3},{key:'work',label:'3º TAF',max:4}];if(subject.exam_count===1)return[{key:'exam2',label:'Avaliação Final (AVF)',max:7},{key:'work',label:'Trabalho',max:3}];return[{key:'exam1',label:'Avaliação Complementar (AVC)',max:3},{key:'exam2',label:'Avaliação Final (AVF)',max:4},{key:'work',label:'Trabalho',max:3}]}
-function renderCollectiveScores(){const select=$('#collective-subject'),current=select.value;if(select.options.length<=1)select.innerHTML='<option value="">Selecione</option>'+cache.subjects.map(x=>`<option value="${x.id}">${esc(x.name)} — ${x.hours} h/a</option>`).join('');if(current)select.value=current;const subject=cache.subjects.find(x=>String(x.id)===select.value),container=$('#collective-score-table'),button=$('#collective-save-button');if(!subject){container.innerHTML='';button.disabled=true;$('#collective-rule').textContent='Selecione uma disciplina para montar a tabela.';return}const fields=collectiveFields(subject);$('#collective-rule').textContent=subject.grading_mode==='apt'?'Resultado qualitativo Apto/Inapto.':fields.map(x=>`${x.label}: ${x.max} pontos`).join(' • ');container.innerHTML=cache.students.length?`<div class="table-wrap"><table class="grade-table collective-table"><thead><tr><th>Discente</th>${fields.map(field=>`<th>${esc(field.label)}${field.max?`<small class="table-sub">Máx. ${field.max}</small>`:''}</th>`).join('')}</tr></thead><tbody>${cache.students.map(student=>{const score=cache.scores.find(x=>String(x.subject_id)===String(subject.id)&&String(x.student_id)===String(student.id))||{};return`<tr data-student-id="${esc(student.id)}"><td><strong>${esc(student.name)}</strong><small class="table-sub">${esc(student.id)} • ${esc(student.rank)}</small></td>${fields.map(field=>`<td>${field.type==='status'?`<select data-field="status"><option value="">Não lançado</option><option${score.status==='Apto'?' selected':''}>Apto</option><option${score.status==='Inapto'?' selected':''}>Inapto</option></select>`:`<input data-field="${field.key}" type="number" min="0" max="${field.max}" step="0.01" inputmode="decimal" value="${score[field.key]??''}" aria-label="${esc(field.label)} de ${esc(student.name)}">`}</td>`).join('')}</tr>`}).join('')}</tbody></table></div>`:'<p>Nenhum discente cadastrado.</p>';button.disabled=!cache.students.length}
-document.querySelectorAll('.score-mode-button').forEach(button=>button.addEventListener('click',()=>setScoreMode(button.dataset.scoreMode)));
-$('#score-subject').addEventListener('change',()=>{updateRule();updateScoreValues()});$('#score-student').addEventListener('change',()=>{updateObservation();updateScoreValues()});$('#calendar-subject').addEventListener('change',updateCalendarTypes);$('#collective-subject').addEventListener('change',renderCollectiveScores);
-async function loadData(){const data=await api('/api/admin/data');cache=data;updateStudentEntryToggle(Boolean(data.student_entry_enabled));$('#score-student').innerHTML='<option value="">Selecione</option>'+data.students.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} — ${esc(x.id)}</option>`).join('');const options=data.subjects.map(x=>`<option value="${x.id}">${esc(x.name)} — ${x.hours} h/a</option>`).join('');$('#score-subject').innerHTML='<option value="">Selecione</option>'+options;$('#calendar-subject').innerHTML=data.subjects.map(x=>`<option value="${esc(x.name)}">${esc(x.name)} — ${x.hours} h/a</option>`).join('');updateCalendarTypes();
-$('#ranking-data').innerHTML=data.ranking.length?`<div class="table-wrap"><table class="grade-table"><thead><tr><th>Posição</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th><th>Observação</th></tr></thead><tbody>${data.ranking.map(x=>`<tr><td><strong>${x.position}º</strong></td><td><button class="student-name-button" type="button" data-student-details="${esc(x.id)}" aria-label="Ver notas lançadas de ${esc(x.name)}">${esc(x.name)}</button><small class="table-sub">${esc(x.id)} • Clique no nome para consultar</small></td><td>${fmt(x.points)}</td><td>${fmt(x.distributed)}</td><td>${fmt(x.average)}</td><td>${esc(x.observation)||'—'}</td></tr>`).join('')}</tbody></table></div>`:'<p>Nenhum discente cadastrado.</p>';
-$('#scores-data').innerHTML=data.scores.length?`<div class="table-wrap"><table class="grade-table"><thead><tr><th>Discente</th><th>Disciplina</th><th>Avaliação Complementar (AVC)</th><th>Avaliação Final (AVF)</th><th>Trabalho / 3º TAF</th><th>Total ou resultado</th></tr></thead><tbody>${data.scores.map(x=>`<tr><td>${esc(x.student_id)}</td><td>${esc(x.subject)}</td><td>${x.grading_mode==='apt'?'—':x.exam1==null?'—':fmt(x.exam1)}</td><td>${x.grading_mode==='apt'?'—':x.exam2==null?'—':fmt(x.exam2)}</td><td>${x.grading_mode==='apt'?'—':x.work==null?'—':fmt(x.work)}</td><td><strong>${x.grading_mode==='apt'?esc(x.status||'—'):fmt((x.exam1||0)+(x.exam2||0)+(x.work||0))}</strong></td></tr>`).join('')}</tbody></table></div>`:'<p>Nenhum resultado lançado.</p>'}
-$('#refresh-button').addEventListener('click',loadData);$('#logout-button').addEventListener('click',async()=>{await api('/api/admin/logout',{method:'POST',body:'{}'});location.reload()});check();
-document.addEventListener('click',event=>{const button=event.target.closest('[data-student-details]');if(button)openStudentDetails(button.dataset.studentDetails)});$('#student-details-close').addEventListener('click',closeStudentDetails);$('#student-details-close-bottom').addEventListener('click',closeStudentDetails);$('#student-details-dialog').addEventListener('click',event=>{if(event.target===$('#student-details-dialog'))closeStudentDetails()});
-$('#pdf-report-button').addEventListener('click',async e=>{const button=e.currentTarget,message=$('#pdf-report-message');button.disabled=true;message.textContent='Gerando relatório...';try{const response=await fetch('/api/admin/report.pdf');if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||'Não foi possível gerar o relatório.')}const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`relatorio-notas-${new Date().toISOString().slice(0,10)}.pdf`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);message.textContent='Relatório gerado com sucesso.'}catch(error){message.textContent=error.message}finally{button.disabled=false}});
-$('#calendar-import-form').addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,file=$('#calendar-pdf').files[0],button=form.querySelector('button'),message=form.querySelector('.panel-message');if(!file)return;if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';return}button.disabled=true;message.textContent='Lendo e validando o calendário...';try{const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)}),result=await api('/api/admin/calendar/import',{method:'POST',body:JSON.stringify({filename:file.name,pdf_base64})});message.textContent=`Calendário atualizado: ${result.imported} avaliações importadas.`;form.reset();await loadData()}catch(error){message.textContent=error.message}finally{button.disabled=false}});
-$('#collective-score-form').addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=$('#collective-save-button'),message=form.querySelector('.panel-message'),subject_id=$('#collective-subject').value,rows=[...$('#collective-score-table').querySelectorAll('tbody tr')],entries=rows.map(row=>{const entry={student_id:row.dataset.studentId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry}),hasValues=entries.some(entry=>Object.entries(entry).some(([key,value])=>key!=='student_id'&&value!=='')),hasClears=entries.some(entry=>{const previous=cache.scores.find(score=>String(score.subject_id)===String(subject_id)&&String(score.student_id)===String(entry.student_id));if(!previous)return false;const empty=!Object.entries(entry).some(([key,value])=>key!=='student_id'&&value!=='');return empty});if(!hasValues&&!hasClears){message.textContent='Preencha pelo menos um resultado antes de salvar.';return}const payload=entries.filter(entry=>{const previous=cache.scores.find(score=>String(score.subject_id)===String(subject_id)&&String(score.student_id)===String(entry.student_id));const hasValue=Object.entries(entry).some(([key,value])=>key!=='student_id'&&value!=='');return hasValue||previous});button.disabled=true;message.textContent='Salvando lançamentos coletivos...';try{const result=await api('/api/admin/scores/bulk',{method:'POST',body:JSON.stringify({subject_id,entries:payload})});const cleared=Number(result.cleared||0);message.textContent=cleared?`${result.saved} salvos e ${cleared} limpos com sucesso.`:`${result.saved} resultados salvos com sucesso.`;await loadData();renderCollectiveScores()}catch(error){message.textContent=error.message}finally{button.disabled=false}});
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Administração | CFS — 1º Pelotão</title>
+  <link rel="stylesheet" href="styles.css?v=20260801-admin-dashboard">
+</head>
+<body class="admin-page admin-dashboard-page">
+  <main id="login-panel" class="admin-login-shell">
+    <a class="admin-login-brand" href="index.html">
+      <img src="assets/escudo-efas.png" alt="Escudo da EFAS" width="64" height="72">
+      <span><strong>Controle de Notas</strong><small>CFS • 1º Pelotão</small></span>
+    </a>
+    <section class="admin-login">
+      <p class="eyebrow dark">Acesso protegido</p>
+      <h1>Entrar como administrador</h1>
+      <form id="admin-login-form" class="form-card">
+        <label for="admin-user">Usuário</label>
+        <input id="admin-user" autocomplete="username" required>
+        <label for="admin-password">Senha</label>
+        <input id="admin-password" type="password" autocomplete="current-password" required>
+        <p id="login-message" class="form-message" role="alert"></p>
+        <button class="button button-gold full">Entrar</button>
+      </form>
+      <a class="admin-login-back" href="index.html">Voltar ao portal do discente</a>
+    </section>
+  </main>
 
-// Mantém a lista de discentes da importação sincronizada com o cadastro principal.
-new MutationObserver(()=>{const select=$('#pdf-score-student'),current=pdfImportStudentId||select.value;select.innerHTML=$('#score-student').innerHTML;select.value=current}).observe($('#score-student'),{childList:true});
-function renderPdfScorePreview(entries){
-  const container=$('#student-pdf-preview-table'),confirmButton=$('#student-pdf-confirm');
-  confirmButton.disabled=false;confirmButton.textContent='Confirmar e salvar notas';$('#student-pdf-confirm-message').textContent='';
-  container.innerHTML=`<div class="table-wrap"><table class="grade-table pdf-score-preview-table"><thead><tr><th>Importar</th><th>Disciplina</th><th>AVC / 1º TAF</th><th>AVF / 2º TAF</th><th>Trabalho / 3º TAF</th><th>Resultado</th></tr></thead><tbody>${entries.map(entry=>{
-    const subject=cache.subjects.find(item=>String(item.id)===String(entry.subject_id));
-    const previous=cache.scores.find(item=>String(item.student_id)===String(pdfImportStudentId)&&String(item.subject_id)===String(entry.subject_id));
-    const apt=subject?.grading_mode==='apt',taf=subject?.grading_mode==='taf',single=subject?.exam_count===1&&subject?.grading_mode==='normal';
-    const valueOf=(field)=>entry[field]??previous?.[field]??'';
-    const scoreInput=(field,max,disabled=false)=>disabled?'—':`<input data-field="${field}" type="number" min="0" max="${max}" step="0.01" inputmode="decimal" value="${valueOf(field)}" aria-label="${field} de ${esc(entry.subject)}">`;
-    return`<tr data-subject-id="${entry.subject_id}"><td><input class="pdf-import-check" type="checkbox" checked aria-label="Importar ${esc(entry.subject)}"></td><td><strong>${esc(entry.subject)}</strong><small class="table-sub">Campos vazios no PDF mantêm a nota já lançada</small></td><td>${apt?'—':scoreInput('exam1',3,single)}</td><td>${apt?'—':scoreInput('exam2',taf?3:single?7:4)}</td><td>${apt?'—':scoreInput('work',taf?4:3)}</td><td>${apt?`<select data-field="status" aria-label="Resultado de ${esc(entry.subject)}"><option value="">Selecione</option><option${valueOf('status')==='Apto'?' selected':''}>Apto</option><option${valueOf('status')==='Inapto'?' selected':''}>Inapto</option></select>`:'Pontuação'}</td></tr>`;
-  }).join('')}</tbody></table></div>`;
-  $('#student-pdf-preview').hidden=false;
-}
-async function analyzePdfImport(event){
-  event.preventDefault();
-  const form=$('#student-pdf-score-form'),file=$('#student-score-pdf').files[0],student_id=$('#pdf-score-student').value;
-  const button=$('#student-pdf-analyze-button'),message=form.querySelector('.panel-message');
-  if(!student_id){message.textContent='Selecione o discente antes de importar o PDF.';$('#pdf-score-student').focus();showAdminFeedback({title:'Falta escolher o discente',eyebrow:'Atenção',message:'Selecione o discente antes de ler o PDF.',userAction:'Escolha o nome na lista e tente novamente.',tone:'warning'});return}
-  if(!file){message.textContent='Selecione o arquivo PDF de notas.';$('#student-score-pdf').focus();showAdminFeedback({title:'Falta o arquivo PDF',eyebrow:'Atenção',message:'Selecione o arquivo PDF com as notas.',userAction:'Clique em escolher arquivo, selecione o PDF e tente novamente.',tone:'warning'});return}
-  if(file.type&&file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf')){message.textContent='O arquivo selecionado precisa estar no formato PDF.';showAdminFeedback({title:'Arquivo inválido',eyebrow:'Atenção',message:'O arquivo precisa ser um PDF.',userAction:'Salve ou exporte o documento em PDF e envie novamente.',tone:'warning'});return}
-  if(file.size>5*1024*1024){message.textContent='O PDF deve possuir no máximo 5 MB.';showAdminFeedback({title:'Arquivo muito grande',eyebrow:'Atenção',message:'O PDF ultrapassa o limite de 5 MB.',userAction:'Reduza o tamanho do arquivo ou divida o conteúdo e tente de novo.',tone:'warning'});return}
-  $('#student-pdf-preview').hidden=true;$('#student-pdf-confirm-message').textContent='';
-  button.disabled=true;button.textContent='Lendo o PDF...';message.textContent='Lendo as disciplinas e notas do PDF. Elas serão vinculadas ao discente selecionado. Aguarde...';
-  try{
-    const pdf_base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)});
-    const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'preview',student_id,pdf_base64})});
-    pdfImportStudentId=student_id;renderPdfScorePreview(result.entries);
-    message.textContent=`${result.entries.length} disciplina(s) reconhecida(s) para ${result.student.name} (matrícula ${student_id}). Confira a prévia antes de confirmar.`;
-    if(result.user_action||(result.logs||[]).some(item=>String(item.level).toLowerCase()==='warning')){
-      showAdminFeedback({title:'Prévia pronta, com avisos',eyebrow:'Conferência',message:`Foram reconhecidas ${result.entries.length} disciplina(s). Revise a prévia antes de salvar.`,userAction:result.user_action||'',logs:result.logs||[],tone:'warning'});
-    }
-    $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'start'});
-  }catch(error){
-    message.textContent=error.message||'Não foi possível importar o PDF.';$('#student-pdf-preview').hidden=true;
-    showAdminFeedback({title:'Não foi possível ler o PDF',eyebrow:'Erro na importação',message:error.message||'Não foi possível importar o PDF.',userAction:error.userAction||'Confira o arquivo e o discente selecionado, depois tente novamente.',logs:error.logs||[{level:'error',message:error.message||'Falha na leitura do PDF.'}],tone:'error'});
-  }finally{
-    button.disabled=false;button.textContent='Ler PDF e conferir notas';
-  }
-}
-$('#student-pdf-score-form').addEventListener('submit',analyzePdfImport);
-$('#pdf-score-student').addEventListener('change',()=>{pdfImportStudentId='';$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML=''});
-$('#student-score-pdf').addEventListener('change',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML=''});
-$('#student-pdf-cancel').addEventListener('click',()=>{$('#student-pdf-preview').hidden=true;$('#student-pdf-preview-table').innerHTML='';$('#student-pdf-confirm-message').textContent=''});
-async function confirmPdfImport(event){
-  event?.preventDefault();
-  event?.stopPropagation();
-  const button=$('#student-pdf-confirm'),message=$('#student-pdf-confirm-message'),formMessage=$('#student-pdf-score-form .panel-message');
-  if(!button||!message){window.alert('O botão de confirmação não foi carregado corretamente. Atualize a página e tente novamente.');return}
-  if(button.dataset.saving==='true')return;
-  button.dataset.saving='true';button.disabled=true;button.textContent='Salvando notas...';message.textContent='Preparando o lançamento das notas...';
-  try{
-    const student_id=pdfImportStudentId||$('#pdf-score-student')?.value;
-    if(!student_id)throw new Error('Selecione novamente o discente, leia o PDF e tente salvar.');
-    const rows=[...document.querySelectorAll('#student-pdf-preview-table tbody tr')];
-    const entries=rows
-      .filter(row=>row.querySelector('.pdf-import-check')?.checked)
-      .map(row=>{const entry={subject_id:row.dataset.subjectId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry});
-    if(!entries.length)throw new Error('Marque pelo menos uma disciplina na prévia antes de salvar.');
-    const student=cache.students.find(item=>String(item.id)===String(student_id));
-    let saved=0;
-    for(const entry of entries){
-      message.textContent=`Salvando ${saved+1} de ${entries.length}: aguarde...`;
-      await saveScoreResult({
-        student_id,
-        ...entry,
-        observation:student?.observation||''
-      });
-      saved+=1;
-      message.textContent=`Salvando notas: ${saved} de ${entries.length} concluída(s).`;
-    }
-    const success=`Salvo com sucesso: ${saved} disciplina(s) lançada(s).`;
-    message.textContent=success;formMessage.textContent=`Notas salvas para o discente selecionado. ${success}`;
-    button.textContent='Notas salvas';pdfImportStudentId=student_id;
-    $('#student-score-pdf').value='';
-    try{await loadData();$('#pdf-score-student').value=student_id}
-    catch{formMessage.textContent=`${success} A tela não conseguiu atualizar automaticamente; clique em Atualizar para conferir.`}
-    $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'center'});
-  }catch(error){
-    const detail=error?.message||'Não foi possível salvar as notas.';
-    const userAction=error?.userAction||'Confira o discente, as disciplinas e os valores mostrados na prévia. Depois tente novamente.';
-    message.textContent=detail;formMessage.textContent=detail;button.textContent='Tentar salvar novamente';
-    showAdminFeedback({title:'Erro ao salvar as notas',eyebrow:'Falha no lançamento',message:detail,userAction,logs:error?.logs||[{level:'error',message:detail}],tone:'error'});
-  }finally{
-    button.dataset.saving='false';button.disabled=false;
-  }
-}
-const pdfConfirmButton=$('#student-pdf-confirm');
-if(pdfConfirmButton)pdfConfirmButton.onclick=confirmPdfImport;
-// O botão existe desde o carregamento da página; o vínculo direto garante o clique.
+  <section id="dashboard" class="admin-app" hidden>
+    <div id="admin-mobile-overlay" class="admin-mobile-overlay" hidden></div>
+    <aside id="admin-sidebar" class="admin-sidebar" aria-label="Menu administrativo">
+      <div class="admin-sidebar-brand">
+        <img src="assets/escudo-efas.png" alt="Escudo da EFAS" width="48" height="54">
+        <span class="sidebar-brand-copy"><strong>Controle de Notas</strong><small>Painel administrativo</small></span>
+      </div>
+      <nav class="admin-sidebar-nav">
+        <button class="admin-nav-item active" type="button" data-admin-view="overview"><span class="admin-nav-icon" aria-hidden="true">▦</span><span>Visão geral</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="students"><span class="admin-nav-icon" aria-hidden="true">♙</span><span>Discentes</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="subjects"><span class="admin-nav-icon" aria-hidden="true">◇</span><span>Disciplinas</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="grades"><span class="admin-nav-icon" aria-hidden="true">✎</span><span>Lançamento de notas</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="authorizations"><span class="admin-nav-icon" aria-hidden="true">✓</span><span>Autorizações</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="calendar"><span class="admin-nav-icon" aria-hidden="true">◷</span><span>Calendário de avaliações</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="ranking"><span class="admin-nav-icon" aria-hidden="true">#</span><span>Ranking</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="reports"><span class="admin-nav-icon" aria-hidden="true">▤</span><span>Relatórios</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="imports"><span class="admin-nav-icon" aria-hidden="true">⇩</span><span>Importação de arquivos</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="settings"><span class="admin-nav-icon" aria-hidden="true">⚙</span><span>Configurações</span></button>
+      </nav>
+      <div class="admin-sidebar-footer">
+        <a class="admin-nav-item" href="index.html"><span class="admin-nav-icon" aria-hidden="true">⌂</span><span>Portal do discente</span></a>
+        <button id="sidebar-logout-button" class="admin-nav-item admin-nav-logout" type="button"><span class="admin-nav-icon" aria-hidden="true">↪</span><span>Sair</span></button>
+      </div>
+    </aside>
 
-// Numera as relações administrativas sem alterar os valores usados pelo banco.
-const numberedAdminSelects={
-  '#score-student':'student',
-  '#pdf-score-student':'student',
-  '#score-subject':'subject',
-  '#collective-subject':'subject',
-  '#calendar-subject':'subject',
-};
-function numberAdminOptions(){
-  for(const [selector,type] of Object.entries(numberedAdminSelects)){
-    const select=$(selector);if(!select)continue;
-    [...select.options].filter(option=>option.value).forEach((option,index)=>{
-      let label=option.textContent.replace(/^\d+\.\s+/,'');
-      if(type==='subject')label=label.replace(/\s+—\s+\d+\s+h\/a$/i,'');
-      const numbered=`${index+1}. ${label}`;
-      if(option.textContent!==numbered)option.textContent=numbered;
-    });
-  }
-}
-for(const selector of Object.keys(numberedAdminSelects)){
-  const select=$(selector);
-  if(select)new MutationObserver(numberAdminOptions).observe(select,{childList:true,subtree:true});
-}
-numberAdminOptions();
+    <div class="admin-workspace">
+      <header class="admin-top-header">
+        <div class="admin-header-start">
+          <button id="admin-menu-toggle" class="admin-icon-button" type="button" aria-label="Recolher ou expandir menu" aria-expanded="true">☰</button>
+          <div><p class="admin-breadcrumb">Administração EFAS</p><h1 id="admin-page-title">Visão geral</h1></div>
+        </div>
+        <div class="admin-header-tools">
+          <div class="admin-global-search">
+            <label class="sr-only" for="admin-global-search">Pesquisa global</label>
+            <span aria-hidden="true">⌕</span>
+            <input id="admin-global-search" type="search" placeholder="Buscar discente, matrícula, disciplina ou avaliação" autocomplete="off">
+            <kbd>Ctrl K</kbd>
+            <div id="admin-search-results" class="admin-search-results" hidden></div>
+          </div>
+          <button id="admin-notifications-button" class="admin-icon-button notification-button" type="button" aria-label="Abrir notificações" aria-expanded="false">♢<span id="admin-notification-count" class="notification-count" hidden>0</span></button>
+          <div id="admin-notifications-panel" class="admin-notifications-panel" hidden></div>
+          <div class="admin-identity"><span class="admin-avatar" aria-hidden="true">A</span><span><strong id="admin-identity-name">Administrador</strong><small>Perfil administrativo</small></span></div>
+          <button id="logout-button" class="button button-dark button-compact" type="button">Sair</button>
+        </div>
+      </header>
+
+      <main class="admin-content">
+        <div id="initial-warning" class="admin-warning" hidden>Por segurança, altere a senha inicial antes de cadastrar dados.</div>
+
+        <section class="admin-view active" data-view="overview" aria-labelledby="overview-title">
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Resumo acadêmico</p><h2 id="overview-title">Visão geral</h2><p>Acompanhe o pelotão e acesse rapidamente os pontos que exigem atenção.</p></div><button id="refresh-button" class="button button-outline-dark" type="button">Atualizar dados</button></div>
+          <div id="overview-cards" class="overview-card-grid" aria-live="polite"></div>
+          <section class="admin-panel quick-actions-panel"><div class="section-heading"><div><p class="eyebrow dark">Atalhos</p><h3>Ações rápidas</h3></div></div><div id="quick-actions" class="quick-actions-grid"></div></section>
+          <section class="admin-panel pending-panel"><div class="section-heading"><div><p class="eyebrow dark">Conferência</p><h3>Painel de pendências</h3></div><button class="button button-text" type="button" data-admin-view-target="grades">Ver lançamentos</button></div><div id="pending-list" class="pending-list"></div></section>
+        </section>
+
+        <section class="admin-view" data-view="students" aria-labelledby="students-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Cadastros</p><h2 id="students-title">Discentes</h2><p>Cadastre, localize e consulte a composição das notas de cada discente.</p></div><button class="button button-gold" type="button" data-focus-target="#student-form input[name=student_id]">Cadastrar discente</button></div>
+          <div class="admin-two-column">
+            <form id="student-form" class="admin-panel compact-form-panel">
+              <div class="section-heading"><div><h3>Cadastrar ou atualizar discente</h3><p>O código individual será solicitado no primeiro acesso.</p></div></div>
+              <div class="responsive-form-grid">
+                <label>Matrícula ou número de polícia<input name="student_id" required></label>
+                <label>Nome completo<input name="name" required></label>
+                <label>Posto/graduação<input name="rank" value="Aluno CFS" required></label>
+                <label>Código individual<input name="access_code" type="password" minlength="6" required></label>
+              </div>
+              <button class="button button-gold">Salvar discente</button><p class="panel-message" role="status"></p>
+            </form>
+            <aside id="students-summary" class="admin-panel contextual-summary"></aside>
+          </div>
+          <section class="admin-panel table-panel"><div id="students-table"></div></section>
+        </section>
+
+        <section class="admin-view" data-view="subjects" aria-labelledby="subjects-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Currículo</p><h2 id="subjects-title">Disciplinas</h2><p>Consulte as regras e mantenha a relação de disciplinas organizada.</p></div></div>
+          <form id="subject-form" class="admin-panel compact-form-panel">
+            <div class="section-heading"><div><h3>Cadastrar ou atualizar disciplina</h3><p>As regras especiais existentes continuam sendo respeitadas.</p></div></div>
+            <div class="responsive-form-grid subject-form-grid">
+              <label>Nome da disciplina<input name="name" required></label>
+              <label>Carga horária<input name="hours" type="number" min="1" required></label>
+              <label>Modelo de avaliação<select name="exam_count"><option value="1">1 avaliação + trabalho</option><option value="2">2 avaliações + trabalho</option></select></label>
+              <label>Modo de nota<select name="grading_mode"><option value="normal">Pontuação</option><option value="apt">Apto ou Inapto</option><option value="taf">TAF 3 + 3 + 4</option></select></label>
+            </div>
+            <button class="button button-gold">Salvar disciplina</button><p class="panel-message" role="status"></p>
+          </form>
+          <section class="admin-panel table-panel"><div id="subjects-table"></div></section>
+        </section>
+
+        <section class="admin-view" data-view="grades" aria-labelledby="grades-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Notas</p><h2 id="grades-title">Lançamento de notas</h2><p>Escolha o fluxo adequado, confira as alterações e salve somente após a revisão.</p></div></div>
+          <section class="admin-panel score-mode-panel" aria-labelledby="score-mode-title">
+            <div><p class="eyebrow dark">Formas de lançamento</p><h3 id="score-mode-title">Como deseja lançar as notas?</h3></div>
+            <div class="score-mode-actions"><div class="score-mode-buttons" role="group" aria-label="Modo de lançamento"><button class="score-mode-button active" type="button" data-score-mode="subject" aria-pressed="true">Por matéria individual</button><button class="score-mode-button" type="button" data-score-mode="student" aria-pressed="false">Por discente</button><button class="score-mode-button" type="button" data-score-mode="collective" aria-pressed="false">Coletivo por matéria</button></div><button class="button button-outline-dark" type="button" data-admin-view-target="imports">Importação assistida por PDF</button></div>
+          </section>
+          <div id="grade-context-summary" class="grade-context-summary" hidden></div>
+          <form id="score-form" class="admin-panel score-panel">
+            <div class="section-heading"><div><h3 id="individual-score-title">Lançamento individual por matéria</h3><p id="individual-score-help">A matéria permanecerá selecionada após salvar; escolha o próximo discente.</p></div></div>
+            <div class="responsive-form-grid">
+              <label>Discente<select name="student_id" id="score-student" required><option value="">Selecione</option></select></label>
+              <label>Disciplina<select name="subject_id" id="score-subject" required><option value="">Selecione</option></select></label>
+            </div>
+            <div id="score-rule" class="score-rule">Selecione uma disciplina para visualizar a regra.</div>
+            <label id="status-label" hidden>Resultado<select name="status"><option value="">Selecione</option><option>Apto</option><option>Inapto</option></select></label>
+            <div class="score-fields"><label id="exam1-label"><span class="field-name">Avaliação Complementar (AVC)</span> <span id="exam1-max"></span><input name="exam1" type="number" min="0" step="0.01" inputmode="decimal"></label><label id="exam2-label"><span class="field-name">Avaliação Final (AVF)</span> <span id="exam2-max">(máx. 4)</span><input name="exam2" type="number" min="0" max="4" step="0.01" inputmode="decimal"></label><label id="work-label"><span class="field-name">Trabalho</span> <span id="work-max">(máx. 3)</span><input name="work" type="number" min="0" max="3" step="0.01" inputmode="decimal"></label></div>
+            <label>Observação individual<textarea name="observation" id="score-observation" rows="4" placeholder="Informações pertinentes que serão exibidas ao discente."></textarea></label>
+            <div id="individual-save-summary" class="save-summary" hidden></div>
+            <button class="button button-gold">Salvar resultado</button><p class="panel-message" role="status"></p>
+          </form>
+          <form id="collective-score-form" class="admin-panel collective-score-panel" hidden>
+            <div class="panel-title"><div><h3>Lançamento coletivo por matéria</h3><p>Preencha vários discentes e salve todos os resultados de uma só vez.</p></div><label>Disciplina<select id="collective-subject" required><option value="">Selecione</option></select></label></div>
+            <div id="collective-rule" class="score-rule">Selecione uma disciplina para montar a tabela.</div><div id="collective-score-table"></div><div id="collective-save-summary" class="save-summary" hidden></div><button id="collective-save-button" class="button button-gold" type="submit" disabled>Salvar lançamentos coletivos</button><p class="panel-message" role="status" aria-live="polite"></p>
+          </form>
+          <section class="admin-panel table-panel"><div class="section-heading"><div><h3>Notas lançadas</h3><p>Use os filtros para conferir os registros já gravados.</p></div></div><div id="scores-data"></div></section>
+        </section>
+
+        <section class="admin-view" data-view="authorizations" aria-labelledby="authorizations-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Lançamento pelo discente</p><h2 id="authorizations-title">Autorizações</h2><p>Controle qual disciplina pode ser lançada, por quem e durante qual período.</p></div></div>
+          <section class="admin-panel authorization-status-panel"><div class="section-heading"><div><h3>Situação geral</h3><p>O bloqueio geral tem prioridade sobre todas as demais configurações.</p></div><div class="student-entry-toggle"><span>Lançamento pelo discente</span><button id="student-entry-toggle-button" class="student-entry-toggle-button" type="button" aria-pressed="true">Disponível</button><small id="student-entry-toggle-message" role="status" aria-live="polite">Os discentes podem lançar notas.</small></div></div></section>
+          <section class="admin-panel student-subject-restriction" aria-labelledby="student-subject-restriction-title">
+            <div class="restriction-heading"><p class="eyebrow dark">Disciplina autorizada</p><h3 id="student-subject-restriction-title">Restringir lançamento por disciplina</h3><p>Quando ativada, somente a disciplina selecionada ficará disponível para os discentes autorizados.</p></div>
+            <label class="restriction-switch"><input id="student-subject-restriction-enabled" type="checkbox"><span>Ativar restrição</span></label>
+            <div class="restriction-controls"><select id="student-subject-restriction-select" aria-label="Disciplina liberada" disabled><option value="">Selecione uma disciplina</option></select><button id="student-subject-restriction-save" class="button button-dark" type="button">Salvar restrição</button></div>
+            <strong id="student-subject-restriction-highlight" class="restriction-highlight" hidden>Lançamento liberado somente para esta disciplina</strong><small id="student-subject-restriction-message" role="status" aria-live="polite"></small>
+          </section>
+          <section class="admin-panel authorization-detail-panel">
+            <div class="section-heading"><div><h3>Prazo e público autorizado</h3><p>Deixe a lista vazia para autorizar todos os discentes.</p></div><span id="authorization-state-badge" class="status-badge neutral">Não configurado</span></div>
+            <div class="responsive-form-grid">
+              <label>Início da autorização<input id="authorization-start" type="datetime-local"></label>
+              <label>Fim da autorização<input id="authorization-end" type="datetime-local"></label>
+            </div>
+            <fieldset class="authorization-students-fieldset"><legend>Discentes específicos</legend><div class="table-toolbar"><label class="table-search"><span class="sr-only">Filtrar discentes autorizados</span><input id="authorization-student-search" type="search" placeholder="Buscar por nome ou matrícula"></label><button id="authorization-select-all" class="button button-text" type="button">Selecionar todos</button><button id="authorization-clear-all" class="button button-text" type="button">Limpar seleção</button></div><div id="authorization-students" class="authorization-student-list"></div></fieldset>
+            <div class="authorization-actions"><button id="authorization-save-button" class="button button-gold" type="button">Salvar autorização</button><button id="authorization-block-button" class="button button-outline-dark" type="button">Bloquear novos lançamentos</button><button id="authorization-revoke-button" class="button button-danger" type="button">Revogar autorização</button></div><p id="authorization-message" class="panel-message" role="status" aria-live="polite"></p>
+          </section>
+          <section class="admin-panel"><div class="section-heading"><div><h3>Acompanhamento</h3><p>Progresso dos discentes na disciplina liberada.</p></div></div><div id="authorization-summary" class="authorization-summary"></div><div id="authorization-history" class="authorization-history"></div></section>
+        </section>
+
+        <section class="admin-view" data-view="calendar" aria-labelledby="calendar-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Planejamento acadêmico</p><h2 id="calendar-title">Calendário de avaliações</h2><p>Consulte em formato mensal ou por lista cronológica.</p></div><button class="button button-gold" type="button" data-focus-target="#exam-form input[name=date]">Cadastrar avaliação</button></div>
+          <div class="calendar-toolbar admin-panel"><div class="segmented-control" role="group" aria-label="Formato do calendário"><button class="active" type="button" data-calendar-mode="month">Mensal</button><button type="button" data-calendar-mode="list">Lista cronológica</button></div><div class="responsive-form-grid calendar-filter-grid"><label>Mês<input id="calendar-filter-month" type="month"></label><label>Disciplina<select id="calendar-filter-subject"><option value="">Todas</option></select></label><label>Tipo<select id="calendar-filter-type"><option value="">Todos</option></select></label><label>Situação<select id="calendar-filter-status"><option value="">Todas</option><option value="upcoming">Próximas</option><option value="completed">Realizadas</option></select></label></div><div id="calendar-filter-tags" class="filter-tags"></div></div>
+          <section class="admin-panel calendar-display-panel"><div id="calendar-month-view"></div><div id="calendar-list-view" hidden></div></section>
+          <form id="exam-form" class="admin-panel schedule-panel"><div class="section-heading"><div><h3>Cadastrar avaliação</h3><p>A avaliação será disponibilizada no calendário conforme o prazo vigente.</p></div></div><div class="schedule-grid"><label>Data<input name="date" type="date" required></label><label>Disciplina<select name="subject" id="calendar-subject" required></select></label><label>Horário<input name="time" placeholder="08h00" required></label><label>Local<input name="place" required></label><label>Tipo<select name="type" id="calendar-type"><option>Avaliação Complementar (AVC)</option><option>Avaliação Final (AVF)</option><option>Trabalho</option></select></label></div><button class="button button-gold">Cadastrar no calendário</button><p class="panel-message" role="status"></p></form>
+        </section>
+
+        <section class="admin-view" data-view="ranking" aria-labelledby="ranking-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Desempenho</p><h2 id="ranking-title">Ranking completo do pelotão</h2><p>Consulte a posição e abra a composição da pontuação de cada discente.</p></div><button id="pdf-report-button" class="button button-gold" type="button">Gerar relatório em PDF</button></div><p id="pdf-report-message" class="panel-message" role="status"></p><section class="admin-panel table-panel"><div id="ranking-data"></div></section>
+        </section>
+
+        <section class="admin-view" data-view="reports" aria-labelledby="reports-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Documentos</p><h2 id="reports-title">Relatórios</h2><p>Gere documentos a partir dos dados atuais do sistema.</p></div></div>
+          <div id="report-cards" class="report-card-grid"></div><p id="reports-message" class="panel-message" role="status"></p>
+        </section>
+
+        <section class="admin-view" data-view="imports" aria-labelledby="imports-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Entrada de dados</p><h2 id="imports-title">Importação de arquivos</h2><p>Toda importação passa por leitura, revisão e confirmação antes da gravação.</p></div></div>
+          <section class="admin-panel pdf-score-import-panel" aria-labelledby="pdf-score-import-title"><div class="panel-title"><div><p class="eyebrow dark">Importação assistida</p><h3 id="pdf-score-import-title">Anexar notas de um discente por PDF</h3><p>Escolha o discente e envie um PDF com texto selecionável. O sistema mostrará uma prévia antes de gravar qualquer nota.</p></div></div><form id="student-pdf-score-form" class="pdf-score-import-form"><label>Discente<select id="pdf-score-student" required><option value="">Selecione</option></select></label><label>Arquivo PDF<input id="student-score-pdf" type="file" accept="application/pdf,.pdf" required></label><button id="student-pdf-analyze-button" class="button button-gold" type="submit">Ler PDF e conferir notas</button><p class="panel-message" role="status" aria-live="polite"></p></form><div id="student-pdf-preview" hidden><div class="pdf-preview-head"><div><h4>Prévia das notas reconhecidas</h4><p>Confira e corrija os valores. Desmarque uma matéria para não lançá-la.</p></div><button id="student-pdf-cancel" class="button button-outline-dark" type="button">Cancelar</button></div><div id="student-pdf-preview-table"></div><div class="pdf-save-action"><button id="student-pdf-confirm" class="button button-dark" type="button">Confirmar o lançamento das notas</button><p id="student-pdf-confirm-message" class="panel-message" role="status" aria-live="assertive">Aguardando confirmação.</p></div></div></section>
+          <form id="calendar-import-form" class="admin-panel schedule-panel"><div class="section-heading"><div><p class="eyebrow dark">Calendário oficial</p><h3>Importar calendário por PDF</h3><p>O sistema lerá as provas reconhecidas e solicitará confirmação. Limite: 5 MB.</p></div></div><label for="calendar-pdf">Arquivo PDF<input id="calendar-pdf" name="calendar_pdf" type="file" accept="application/pdf,.pdf" required></label><button class="button button-gold" type="submit">Ler PDF e revisar calendário</button><p class="panel-message" role="status" aria-live="polite"></p><div id="calendar-import-preview" hidden><div class="pdf-preview-head"><div><h4>Prévia das avaliações reconhecidas</h4><p>Confira todas as linhas antes de substituir o calendário atual.</p></div><button id="calendar-import-cancel" class="button button-outline-dark" type="button">Cancelar</button></div><div id="calendar-import-preview-table"></div><div class="pdf-save-action"><button id="calendar-import-confirm" class="button button-dark" type="button">Confirmar e substituir calendário</button><p id="calendar-import-confirm-message" class="panel-message" role="status" aria-live="assertive"></p></div></div></form>
+          <section class="admin-panel"><div class="section-heading"><div><h3>Histórico de importações</h3><p>Registro das últimas leituras e confirmações efetuadas.</p></div></div><div id="import-history"></div></section>
+        </section>
+
+        <section class="admin-view" data-view="settings" aria-labelledby="settings-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Preferências</p><h2 id="settings-title">Configurações</h2><p>Gerencie a senha administrativa e preferências visuais do painel.</p></div></div>
+          <div class="admin-two-column"><form id="password-form" class="admin-panel compact-form-panel"><div class="section-heading"><div><h3>Alterar senha</h3><p>Utilize ao menos 12 caracteres.</p></div></div><label>Nova senha<input id="new-password" type="password" minlength="12" autocomplete="new-password" required></label><button class="button button-dark">Salvar senha</button><p class="panel-message" role="status"></p></form><section class="admin-panel"><div class="section-heading"><div><h3>Interface</h3><p>Preferências salvas somente neste dispositivo.</p></div></div><label class="preference-toggle"><input id="compact-tables-preference" type="checkbox"><span>Usar tabelas compactas</span></label><label class="preference-toggle"><input id="reduce-motion-preference" type="checkbox"><span>Reduzir animações</span></label></section></div>
+        </section>
+      </main>
+    </div>
+  </section>
+
+  <dialog id="student-details-dialog" class="student-details-dialog" aria-labelledby="student-details-title"><div class="student-details-head"><div><p class="eyebrow dark">Consulta individual</p><h2 id="student-details-title">Notas do discente</h2></div><button id="student-details-close" class="dialog-close" type="button" aria-label="Fechar consulta">×</button></div><div id="student-details-content"></div><div class="student-details-actions"><button id="student-details-close-bottom" class="button button-dark" type="button">Fechar</button></div></dialog>
+  <dialog id="admin-feedback-dialog" class="student-details-dialog admin-feedback-dialog" aria-labelledby="admin-feedback-title"><div class="student-details-head"><div><p id="admin-feedback-eyebrow" class="eyebrow dark">Aviso</p><h2 id="admin-feedback-title">Mensagem</h2></div><button id="admin-feedback-close" class="dialog-close" type="button" aria-label="Fechar aviso">×</button></div><div id="admin-feedback-content" class="admin-feedback-content"></div><div class="student-details-actions"><button id="admin-feedback-close-bottom" class="button button-dark" type="button">Entendi</button></div></dialog>
+  <dialog id="admin-confirm-dialog" class="admin-confirm-dialog" aria-labelledby="admin-confirm-title"><div class="student-details-head"><div><p class="eyebrow dark">Confirmação necessária</p><h2 id="admin-confirm-title">Confirmar ação</h2></div><button id="admin-confirm-close" class="dialog-close" type="button" aria-label="Fechar confirmação">×</button></div><p id="admin-confirm-message"></p><div class="student-details-actions"><button id="admin-confirm-cancel" class="button button-outline-dark" type="button">Cancelar</button><button id="admin-confirm-submit" class="button button-danger" type="button">Confirmar</button></div></dialog>
+
+  <script src="admin.js?v=20260801-preserved" defer></script>
+  <script src="admin-dashboard.js?v=20260801-dashboard" defer></script>
+</body>
+</html>
