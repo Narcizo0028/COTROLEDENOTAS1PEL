@@ -19,6 +19,10 @@ A pesquisa global localiza discentes, matrículas, disciplinas e avaliações. T
 
 As importações de calendário e notas sempre exigem prévia e confirmação. Alterações de notas existentes, bloqueio e revogação de autorizações também solicitam confirmação explícita antes de gravar.
 
+A organização final do menu é: Visão geral, Discentes, Disciplinas, Lançamento de notas, Calendário de avaliações, Ranking, Relatórios, Configurações e Sair. A importação de notas e as autorizações ficam dentro de Lançamento de notas; a importação do calendário fica dentro de Calendário de avaliações. As telas Discentes e Disciplinas exibem somente seus formulários de cadastro.
+
+O ranking é recalculado a partir do banco sempre que os dados são carregados e pode ser atualizado manualmente. A classificação utiliza `percentual = (pontos obtidos / pontos distribuídos) × 100`, com proteção para pontuação distribuída igual a zero.
+
 ## Execução local
 
 Requer Python 3.10 ou superior. Na primeira execução, defina uma senha administrativa temporária com pelo menos 12 caracteres.

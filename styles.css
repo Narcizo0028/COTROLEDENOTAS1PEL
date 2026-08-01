@@ -178,6 +178,55 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .footer-brand { grid-column: auto; }
   .site-footer { padding: 28px 0 14px; }
 }
+
+/* Ajustes administrativos de navegação, pesquisa e tabelas de lançamento. */
+input[type="search"],
+.admin-dashboard-page .admin-global-search input,
+.admin-dashboard-page .table-search input {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: plaintext;
+}
+.admin-dashboard-page input[type="search"]::placeholder { direction: ltr; text-align: left; }
+.single-form-panel { width: min(100%, 980px); }
+.admin-grade-extension:not([hidden]) { display: block; margin-top: 24px; }
+.admin-subsection-heading { margin: 0 0 18px; padding-top: 8px; }
+.admin-subsection-heading h2 { margin: 4px 0 6px; font-size: clamp(1.45rem, 2.4vw, 2rem); }
+.heading-actions, .form-actions, .calendar-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.ranking-updated-at { margin: 10px 0 0; color: var(--admin-muted); font-size: .8rem; }
+.calendar-item-actions { justify-content: flex-end; margin-left: auto; }
+#collective-score-table .table-wrap {
+  position: relative;
+  max-height: min(64vh, 620px);
+  overflow: auto;
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+}
+#collective-score-table .collective-table {
+  margin-top: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+#collective-score-table .collective-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  min-height: 58px;
+  padding: 14px 12px;
+  background: #f4f5f2;
+  box-shadow: 0 1px 0 var(--admin-border);
+  vertical-align: middle;
+}
+#collective-score-table .collective-table tbody td { min-height: 64px; padding: 12px; vertical-align: middle; background: #fff; }
+#collective-score-table .collective-table input,
+#collective-score-table .collective-table select { min-width: 112px; margin: 0; }
+.report-filter-panel { margin-bottom: 18px; }
+@media (max-width: 720px) {
+  .heading-actions, .heading-actions .button, .calendar-item-actions { width: 100%; }
+  .heading-actions .button, .calendar-item-actions .button { flex: 1 1 auto; }
+  #collective-score-table .table-wrap { max-height: 68vh; }
+  #collective-score-table .collective-table { min-width: 720px; }
+}
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition: none !important; } }
 
 /* Painel administrativo protegido */

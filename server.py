@@ -9,7 +9,7 @@ import base64, binascii, difflib, hashlib, hmac, io, json, os, re, secrets, sqli
 
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "notas.db"
-BUILD_ID = "2026-08-01-painel-administrativo-v2"
+BUILD_ID = "2026-08-01-painel-administrativo-reorganizado-v3"
 HOST = os.environ.get("EFAS_HOST", "0.0.0.0")
 PORT = int(os.environ.get("EFAS_PORT", os.environ.get("PORT", "4174")))
 SESSIONS = {}
@@ -97,6 +97,17 @@ def append_setting_history(db, key, item, limit=60):
     history=history[:limit]
     save_json_setting(db,key,history)
     return history
+
+def record_score_history(db, actor, action, student_id, subject_id, detail=""):
+    student=db.execute("SELECT name FROM students WHERE id=?",(str(student_id),)).fetchone()
+    subject=db.execute("SELECT name FROM subjects WHERE id=?",(int(subject_id),)).fetchone()
+    if not student or not subject:return
+    message=f"{student['name']} — {subject['name']}"
+    if detail:message+=f": {detail}"
+    append_setting_history(db,"score_history",{
+        "at":datetime.now(LOCAL_TIMEZONE).strftime("%d/%m/%Y %H:%M:%S"),
+        "actor":actor,"action":action,"student_id":str(student_id),"subject_id":int(subject_id),"message":message,
+    },limit=200)
 
 def student_entry_authorization(db):
     config=json_setting(db,"student_entry_authorization",{})
@@ -339,7 +350,10 @@ def parse_calendar_pdf(raw):
     if 'CALENDÁRIO DE PROVAS' not in text.upper():raise ValueError('O arquivo não parece ser um calendário oficial de provas.')
     aliases={
       'Redação de Documentos Instituc. da':'Redação de Documentos Institucionais da PMMG',
+      'Redação de Documentos Instituc. da PMMG':'Redação de Documentos Institucionais da PMMG',
+      'Redação de Documentos Instituc. da PMMG.':'Redação de Documentos Institucionais da PMMG',
       'Legislação Institucional Aplicada à Gest.':'Legislação Institucional Aplicada à Gestão de Recursos Humanos',
+      'Legislação Institucional Aplicada à Gest. de RH.':'Legislação Institucional Aplicada à Gestão de Recursos Humanos',
     }
     valid_subjects={name:name for _,name,_ in SUBJECTS};months={'Jan':'01','Fev':'02','Mar':'03','Abr':'04','Mai':'05','Jun':'06','Jul':'07','Ago':'08','Set':'09','Out':'10','Nov':'11','Dez':'12'}
     pattern=re.compile(r'^(.+?)\s+([Xx-])\s+([Xx-])\s+(\d{2})(Jan|Fev|Mar|Abr|Mai|Jun|Jul|Ago|Set|Out|Nov|Dez)(\d{2})\s+(\d{2}h\d{2}min)\s+(\d+)\s+Minutos$',re.IGNORECASE)
@@ -348,6 +362,14 @@ def parse_calendar_pdf(raw):
         line=' '.join(source_line.split());match=pattern.match(line)
         if not match:continue
         raw_subject,vf,vc,day,month,year,hour,duration=match.groups();subject=aliases.get(raw_subject,valid_subjects.get(raw_subject))
+        if not subject:
+            normalized=lambda value:re.sub(r'[^a-z0-9]+',' ',unicodedata.normalize('NFKD',value).encode('ascii','ignore').decode().lower()).strip()
+            raw_normalized=normalized(raw_subject)
+            prefix_matches=[name for name in valid_subjects if len(raw_normalized)>=12 and normalized(name).startswith(raw_normalized)]
+            if len(prefix_matches)==1:subject=prefix_matches[0]
+            if not subject:
+                candidates=sorted((difflib.SequenceMatcher(None,raw_normalized,normalized(name)).ratio(),name) for name in valid_subjects)
+                if candidates and candidates[-1][0]>=0.68:subject=candidates[-1][1]
         if not subject:raise ValueError(f'Disciplina não reconhecida no PDF: {raw_subject}.')
         kind='Avaliação Final (AVF)' if vf.upper()=='X' else 'Avaliação Complementar (AVC)' if vc.upper()=='X' else None
         if not kind:raise ValueError(f'Tipo de avaliação não identificado para {subject}.')
@@ -465,16 +487,24 @@ def ranking(db):
       ),0) distributed,
       COUNT(CASE WHEN sub.grading_mode!='apt' AND (sc.exam1>0 OR sc.exam2>0 OR sc.work>0) THEN 1 END) subjects_count
       FROM students s LEFT JOIN scores sc ON sc.student_id=s.id LEFT JOIN subjects sub ON sub.id=sc.subject_id
-      GROUP BY s.id ORDER BY points DESC,s.name""").fetchall()
-    result=[]; last=None; position=0
-    for index,row in enumerate(rows,1):
-        if last is None or row["points"]<last: position=index
-        last=row["points"]; item=dict(row); item["position"]=position; item["average"]=round(row["points"]/row["subjects_count"],2) if row["subjects_count"] else 0; result.append(item)
+      GROUP BY s.id""").fetchall()
+    result=[]
+    for row in rows:
+        item=dict(row)
+        item["percentage"]=round((row["points"]/row["distributed"])*100,2) if row["distributed"] else 0
+        item["average"]=round(row["points"]/row["subjects_count"],2) if row["subjects_count"] else 0
+        result.append(item)
+    result.sort(key=lambda item:(-item["percentage"],-item["points"],-item["distributed"],str(item["name"]).casefold()))
+    last=None;position=0
+    for index,item in enumerate(result,1):
+        current=(item["percentage"],item["points"],item["distributed"])
+        if last is None or current!=last:position=index
+        item["position"]=position;last=current
     return result
 
 def student_ranking_view(rows):
     """Expõe somente colocação e pontuação, sem qualquer dado identificador."""
-    return [{key:item[key] for key in ("position","points","distributed","average")} for item in rows]
+    return [{key:item[key] for key in ("position","points","distributed","percentage","average")} for item in rows]
 
 def notes_report_pdf(db):
     """Gera o relatório administrativo de lançamentos em PDF."""
@@ -579,12 +609,14 @@ class Handler(SimpleHTTPRequestHandler):
                     "students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],
                     "scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],
                     "ranking":ranking(db),
+                    "ranking_updated_at":datetime.now(LOCAL_TIMEZONE).strftime("%d/%m/%Y %H:%M:%S"),
                     "exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date,time")],
                     "student_entry_enabled":student_entry_enabled(db),
                     "student_subject_restriction":student_subject_restriction(db),
                     "student_entry_authorization":student_entry_authorization(db),
                     "authorization_history":json_setting(db,"authorization_history",[]),
                     "import_history":json_setting(db,"import_history",[]),
+                    "score_history":json_setting(db,"score_history",[]),
                 })
             return
         if path=="/api/admin/report.pdf":
@@ -615,7 +647,7 @@ class Handler(SimpleHTTPRequestHandler):
                 entry_sheet=student_entry_sheet(db,student["id"]) if entry_enabled else []
                 entry_restriction=student_subject_restriction(db)
                 complete_ranking=ranking(db);own=next((x for x in complete_ranking if x["id"]==student["id"]),None)
-            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"student_subject_restriction":entry_restriction,"ranking":{k:own[k] for k in ("position","points","distributed","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
+            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"student_subject_restriction":entry_restriction,"ranking":{k:own[k] for k in ("position","points","distributed","percentage","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
         if self.path=="/api/student/password":
             sid=self.student()
             if not sid:self.output({"error":"Sessão expirada. Consulte suas notas novamente."},401);return
@@ -673,6 +705,7 @@ class Handler(SimpleHTTPRequestHandler):
                     for item in prepared:
                         if save_score(db,*item):saved+=1
                         else:cleared+=1
+                        record_score_history(db,f"Discente {sid}","lançamento pelo discente",item[0],item[1],"resultado confirmado")
                     db.commit()
                     for _,subject_id,exam1,exam2,work,status in prepared:
                         expected_empty=status is None and exam1 is None and exam2 is None and work is None
@@ -693,13 +726,18 @@ class Handler(SimpleHTTPRequestHandler):
                     "student_subject_restriction":restriction,
                     "entry_sheet":sheet,
                     "scores":scores,
-                    "ranking":{k:own[k] for k in ("position","points","distributed","average")} if own else None,
+                    "ranking":{k:own[k] for k in ("position","points","distributed","percentage","average")} if own else None,
                     "ranking_list":student_ranking_view(complete_ranking),
                 });return
             except (ValueError,TypeError,sqlite3.Error) as error:
                 self.output({"error":str(error)},400);return
         user=self.require_admin()
         if not user:return
+        if self.path=="/api/admin/ranking/refresh":
+            try:
+                with connect() as db:rows=ranking(db)
+                self.output({"ok":True,"ranking":rows,"ranking_updated_at":datetime.now(LOCAL_TIMEZONE).strftime("%d/%m/%Y %H:%M:%S")});return
+            except sqlite3.Error as error:self.output({"error":f"Não foi possível atualizar o ranking: {error}"},500);return
         if self.path=="/api/admin/calendar/import":
             try:
                 action=str(data.get("action","preview")).strip().lower()
@@ -781,6 +819,7 @@ class Handler(SimpleHTTPRequestHandler):
                         ok=save_score(db,sid_,subject_id,exam1,exam2,work,status)
                         if not ok:raise sqlite3.Error(f'Falha ao gravar {subject_name}.')
                         saved_rows.append((subject_id,exam1,exam2,work,status,subject_name))
+                        record_score_history(db,user,"importação por PDF",sid_,subject_id,"resultado confirmado após revisão")
                         pdf_import_log(logs,'info',f'Gravada: {subject_name} (AVC/1º={exam1}, AVF/2º={exam2}, Trab/3º={work}, status={status}).')
                     db.commit()
                     saved_ids=[item[0] for item in saved_rows]
@@ -850,6 +889,8 @@ class Handler(SimpleHTTPRequestHandler):
                     for item in prepared:
                         if save_score(db,*item):saved+=1
                         else:cleared+=1
+                        action="exclusão coletiva" if all(value is None for value in item[2:]) else "lançamento coletivo"
+                        record_score_history(db,user,action,item[0],item[1],"resultado confirmado")
                     db.commit()
                     def same_score(row,exam1,exam2,work,status):
                         if not row:return False
@@ -937,7 +978,18 @@ class Handler(SimpleHTTPRequestHandler):
                     password=data.get("password","")
                     if len(password)<12:raise ValueError("A senha deve possuir pelo menos 12 caracteres.")
                     salt,digest=password_hash(password);db.execute("UPDATE admins SET salt=?,password_hash=?,must_change=0 WHERE username=?",(salt,digest,user))
-                elif self.path=="/api/admin/exams":db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",tuple(str(data.get(k,"")).strip() for k in ("date","subject","time","place","type")))
+                elif self.path=="/api/admin/exams":
+                    values=tuple(str(data.get(k,"")).strip() for k in ("date","subject","time","place","type"))
+                    if not all(values):raise ValueError("Preencha todos os dados da avaliação.")
+                    exam_id=int(data.get("id") or 0)
+                    if exam_id:
+                        if not db.execute("SELECT 1 FROM exams WHERE id=?",(exam_id,)).fetchone():raise ValueError("A avaliação selecionada não existe.")
+                        db.execute("UPDATE exams SET date=?,subject=?,time=?,place=?,type=? WHERE id=?",values+(exam_id,))
+                    else:db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",values)
+                elif self.path=="/api/admin/exam/delete":
+                    exam_id=int(data.get("id") or 0)
+                    if not exam_id or not db.execute("SELECT 1 FROM exams WHERE id=?",(exam_id,)).fetchone():raise ValueError("A avaliação selecionada não existe.")
+                    db.execute("DELETE FROM exams WHERE id=?",(exam_id,))
                 elif self.path=="/api/admin/student":
                     sid=str(data.get("student_id","")).strip(); code=str(data.get("access_code","")).strip()
                     if not sid or not data.get("name") or len(code)<6:raise ValueError("Preencha matrícula, nome e código com pelo menos 6 caracteres.")
@@ -976,6 +1028,8 @@ class Handler(SimpleHTTPRequestHandler):
                     existing=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
                     exam1,exam2,work,status=merge_student_score(existing,exam1,exam2,work,status,mode,sub[0])
                     save_score(db,sid,subject_id,exam1,exam2,work,status)
+                    score_action="exclusão" if status is None and exam1 is None and exam2 is None and work is None else "alteração" if existing else "inclusão"
+                    record_score_history(db,user,score_action,sid,subject_id,"lançamento manual")
                     db.commit()
                     confirmed=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
                     expected_empty=status is None and exam1 is None and exam2 is None and work is None

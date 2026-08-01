@@ -4,9 +4,8 @@ const dashboardTableStates = new Map();
 const dashboardTableConfigs = new Map();
 const dashboardViewTitles = {
   overview: 'Visão geral', students: 'Discentes', subjects: 'Disciplinas',
-  grades: 'Lançamento de notas', authorizations: 'Autorizações',
-  calendar: 'Calendário de avaliações', ranking: 'Ranking', reports: 'Relatórios',
-  imports: 'Importação de arquivos', settings: 'Configurações'
+  grades: 'Lançamento de notas', calendar: 'Calendário de avaliações',
+  ranking: 'Ranking', reports: 'Relatórios', settings: 'Configurações'
 };
 let dashboardMetrics = null;
 let dashboardCalendarMode = 'month';
@@ -111,7 +110,7 @@ function dashboardActivateView(view, focusSelector = '') {
   localStorage.setItem('efas-admin-view', target);
   dashboardCloseMobileMenu();
   if (target === 'calendar') dashboardRenderCalendar();
-  if (target === 'authorizations') dashboardRenderAuthorization();
+  if (target === 'grades') dashboardRenderAuthorization();
   if (focusSelector) requestAnimationFrame(() => document.querySelector(focusSelector)?.focus());
   window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
@@ -205,7 +204,7 @@ function dashboardRenderOverview() {
     ['realized', 'Avaliações realizadas', dashboardMetrics.realized.length, 'Com data e horário encerrados', '✓', 'calendar', 'success'],
     ['launched', 'Notas lançadas', dashboardMetrics.launchedComponents, `${dashboardMetrics.completeScores} resultados completos`, '✎', 'grades', 'success'],
     ['pending', 'Lançamentos pendentes', dashboardMetrics.pendingComponents, 'Componentes ainda não preenchidos', '!', 'grades', dashboardMetrics.pendingComponents ? 'warning' : 'success'],
-    ['released', 'Disciplinas liberadas', dashboardMetrics.releasedSubjects, cache.student_entry_enabled ? 'Lançamento pelo discente disponível' : 'Lançamento pelo discente bloqueado', '✓', 'authorizations', cache.student_entry_enabled ? 'success' : 'danger'],
+    ['released', 'Disciplinas liberadas', dashboardMetrics.releasedSubjects, cache.student_entry_enabled ? 'Lançamento pelo discente disponível' : 'Lançamento pelo discente bloqueado', '✓', 'grades', cache.student_entry_enabled ? 'success' : 'danger'],
     ['upcoming', 'Próximos sete dias', dashboardMetrics.upcomingSeven.length, 'Avaliações previstas', '◷', 'calendar', dashboardMetrics.upcomingSeven.length ? 'warning' : ''],
     ['divergences', 'Divergências encontradas', dashboardMetrics.divergenceCount, 'Valores inválidos ou duplicidades', '!', 'grades', dashboardMetrics.divergenceCount ? 'danger' : 'success']
   ];
@@ -213,8 +212,8 @@ function dashboardRenderOverview() {
   const actions = [
     ['♙', 'Cadastrar discente', 'students', '#student-form input[name=student_id]'], ['◇', 'Cadastrar disciplina', 'subjects', '#subject-form input[name=name]'],
     ['▦', 'Lançar por disciplina', 'grades', '#collective-subject'], ['✎', 'Lançar por discente', 'grades', '#score-student'],
-    ['✓', 'Liberar disciplina', 'authorizations', '#student-subject-restriction-enabled'], ['◷', 'Cadastrar avaliação', 'calendar', '#exam-form input[name=date]'],
-    ['⇩', 'Importar notas por PDF', 'imports', '#pdf-score-student'], ['⇩', 'Importar calendário por PDF', 'imports', '#calendar-pdf'],
+    ['✓', 'Liberar disciplina', 'grades', '#student-subject-restriction-enabled'], ['◷', 'Cadastrar avaliação', 'calendar', '#exam-form input[name=date]'],
+    ['⇩', 'Importar notas por PDF', 'grades', '#pdf-score-student'], ['⇩', 'Importar calendário por PDF', 'calendar', '#calendar-pdf'],
     ['▤', 'Gerar relatório administrativo', 'reports', ''], ['#', 'Consultar ranking', 'ranking', '']
   ];
   $('#quick-actions').innerHTML = actions.map(([icon, label, view, focus]) => `<button class="quick-action" type="button" data-admin-view-target="${view}" data-focus-target="${esc(focus)}"><span aria-hidden="true">${icon}</span><strong>${esc(label)}</strong></button>`).join('');
@@ -224,7 +223,7 @@ function dashboardRenderOverview() {
     [dashboardMetrics.incompleteExamSubjects.size, 'Avaliações com lançamento incompleto', 'Avaliações realizadas com pendências', 'Completar lançamento', 'grades', 'warning'],
     [dashboardMetrics.invalidScores, 'Notas acima do valor máximo', 'Registros que precisam ser corrigidos', 'Corrigir', 'grades', 'danger'],
     [dashboardMetrics.duplicatePairs.length, 'Possíveis duplicidades', 'Matrícula e disciplina repetidas', 'Conferir', 'grades', 'danger'],
-    [dashboardMetrics.releasedSubjects, 'Disciplinas liberadas para lançamento', cache.student_entry_enabled ? 'Autorização ativa' : 'Nenhuma autorização ativa', cache.student_entry_enabled ? 'Revogar autorização' : 'Configurar', 'authorizations', cache.student_entry_enabled ? 'warning' : ''],
+    [dashboardMetrics.releasedSubjects, 'Disciplinas liberadas para lançamento', cache.student_entry_enabled ? 'Autorização ativa' : 'Nenhuma autorização ativa', cache.student_entry_enabled ? 'Revogar autorização' : 'Configurar', 'grades', cache.student_entry_enabled ? 'warning' : ''],
     [dashboardMetrics.upcomingSeven.length, 'Avaliações próximas', 'Previstas nos próximos sete dias', 'Ver calendário', 'calendar', '']
   ].filter(([count]) => count > 0);
   $('#pending-list').innerHTML = pending.length ? pending.map(([count, title, detail, action, view, tone]) => `<article class="pending-item" data-tone="${tone}"><span class="pending-marker" aria-hidden="true"></span><div><strong>${count} — ${esc(title)}</strong><small>${esc(detail)}</small></div><button class="button button-outline-dark button-compact" type="button" data-admin-view-target="${view}">${esc(action)}</button></article>`).join('') : '<div class="empty-state"><div><strong>Nenhuma pendência crítica</strong><p>Os dados atuais não apresentam valores inválidos ou duplicidades.</p></div></div>';
@@ -241,7 +240,7 @@ function dashboardRenderNotifications(pending) {
 function dashboardRenderStudents() {
   const rankings = new Map((cache.ranking || []).map(item => [String(item.id), item]));
   const rows = cache.students.map((student, index) => { const rank = rankings.get(String(student.id)) || {}; const progress = dashboardMetrics.studentProgress.find(item => String(item.student.id) === String(student.id)); return { ...student, number: index + 1, points: Number(rank.points || 0), distributed: Number(rank.distributed || 0), position: Number(rank.position || 0), complete: progress?.complete || 0, pending: progress?.pending || cache.subjects.length }; });
-  $('#students-summary').innerHTML = `<div class="section-heading"><div><h3>Resumo dos cadastros</h3><p>Dados atuais do pelotão</p></div></div><div class="summary-stat-list"><div class="summary-stat"><span>Total cadastrado</span><strong>${rows.length}</strong></div><div class="summary-stat"><span>Com alguma nota</span><strong>${rows.filter(row => row.distributed > 0).length}</strong></div><div class="summary-stat"><span>Sem nota</span><strong>${rows.filter(row => row.distributed === 0).length}</strong></div><div class="summary-stat"><span>Com observação</span><strong>${rows.filter(row => row.observation).length}</strong></div></div>`;
+  if ($('#students-summary')) $('#students-summary').innerHTML = `<div class="section-heading"><div><h3>Resumo dos cadastros</h3><p>Dados atuais do pelotão</p></div></div><div class="summary-stat-list"><div class="summary-stat"><span>Total cadastrado</span><strong>${rows.length}</strong></div><div class="summary-stat"><span>Com alguma nota</span><strong>${rows.filter(row => row.distributed > 0).length}</strong></div><div class="summary-stat"><span>Sem nota</span><strong>${rows.filter(row => row.distributed === 0).length}</strong></div><div class="summary-stat"><span>Com observação</span><strong>${rows.filter(row => row.observation).length}</strong></div></div>`;
   dashboardRenderTable({ id: 'discentes', container: '#students-table', rows, defaultSort: 'name', searchPlaceholder: 'Pesquisar nome ou matrícula', searchFields: ['name', 'id', 'rank'], filters: [{ key: 'rank', label: 'Posto/graduação' }, { key: 'status', label: 'Situação', value: row => row.distributed > 0 ? 'Com notas' : 'Sem notas', options: ['Com notas', 'Sem notas'] }], columns: [
     { key: 'number', label: 'Nº', value: row => row.number, numeric: true },
     { key: 'name', label: 'Discente', value: row => row.name, render: row => `<button class="student-name-button" type="button" data-student-details="${esc(row.id)}">${esc(row.name)}</button><small>${esc(row.rank)}</small>` },
@@ -273,9 +272,35 @@ function dashboardRenderSubjects() {
   ] });
 }
 
-function dashboardRenderScores() {
+function dashboardScoreRows() {
   const students = new Map(cache.students.map(student => [String(student.id), student]));
-  const rows = cache.scores.map(score => { const subject = dashboardMetrics.subjectsById.get(String(score.subject_id)); const fields = dashboardSubjectFields(subject || score); const total = fields.filter(field => field.key !== 'status').reduce((sum, field) => sum + Number(score[field.key] || 0), 0); const errors = dashboardScoreErrors(score, subject); return { ...score, student: students.get(String(score.student_id))?.name || score.student_id, mode: dashboardSubjectMode(subject || score), complete: dashboardScoreComplete(score, subject), errors, total }; });
+  return cache.scores.map(score => { const subject = dashboardMetrics.subjectsById.get(String(score.subject_id)); const fields = dashboardSubjectFields(subject || score); const total = fields.filter(field => field.key !== 'status').reduce((sum, field) => sum + Number(score[field.key] || 0), 0); const errors = dashboardScoreErrors(score, subject); const exam = [...cache.exams].reverse().find(item => item.subject === score.subject); return { ...score, student: students.get(String(score.student_id))?.name || score.student_id, mode: dashboardSubjectMode(subject || score), complete: dashboardScoreComplete(score, subject), errors, total, exam_date: exam?.date || '' }; });
+}
+
+function dashboardReportFilterValues() {
+  return {
+    student: $('#report-filter-student')?.value || '', subject: $('#report-filter-subject')?.value || '',
+    type: $('#report-filter-type')?.value || '', status: $('#report-filter-status')?.value || '',
+    start: $('#report-filter-start')?.value || '', end: $('#report-filter-end')?.value || ''
+  };
+}
+
+function dashboardFilteredScoreRows() {
+  const filters = dashboardReportFilterValues();
+  return dashboardScoreRows().filter(row => {
+    if (filters.student && String(row.student_id) !== filters.student) return false;
+    if (filters.subject && String(row.subject_id) !== filters.subject) return false;
+    if (filters.type && (row[filters.type] === null || row[filters.type] === undefined || row[filters.type] === '')) return false;
+    if (filters.status === 'complete' && !row.complete) return false;
+    if (filters.status === 'incomplete' && row.complete) return false;
+    if (filters.start && (!row.exam_date || row.exam_date < filters.start)) return false;
+    if (filters.end && (!row.exam_date || row.exam_date > filters.end)) return false;
+    return true;
+  });
+}
+
+function dashboardRenderScores() {
+  const rows = dashboardFilteredScoreRows();
   dashboardRenderTable({ id: 'notas-lancadas', container: '#scores-data', rows, pageSize: 20, defaultSort: 'subject', searchPlaceholder: 'Pesquisar discente, matrícula ou disciplina', searchFields: ['student', 'student_id', 'subject'], filters: [{ key: 'student', label: 'Discente' }, { key: 'subject', label: 'Disciplina' }, { key: 'statusLabel', label: 'Situação', value: row => row.errors.length ? 'Divergência' : row.complete ? 'Completo' : 'Incompleto', options: ['Completo', 'Incompleto', 'Divergência'] }], columns: [
     { key: 'student', label: 'Discente', value: row => row.student, render: row => `<button class="student-name-button" type="button" data-student-details="${esc(row.student_id)}">${esc(row.student)}</button><small>${esc(row.student_id)}</small>` },
     { key: 'subject', label: 'Disciplina', value: row => row.subject },
@@ -289,6 +314,7 @@ function dashboardRenderScores() {
 
 function dashboardRenderRanking() {
   const rows = (cache.ranking || []).map(item => { const progress = dashboardMetrics.studentProgress.find(entry => String(entry.student.id) === String(item.id)); const percentage = Number(item.distributed) ? Number(item.points) / Number(item.distributed) * 100 : 0; const relatedErrors = cache.scores.filter(score => String(score.student_id) === String(item.id)).reduce((count, score) => count + dashboardScoreErrors(score, dashboardMetrics.subjectsById.get(String(score.subject_id))).length, 0); return { ...item, percentage, considered: progress?.launched || 0, divergences: relatedErrors }; });
+  $('#ranking-updated-at').textContent = `Última atualização: ${cache.ranking_updated_at || 'aguardando atualização'}`;
   dashboardRenderTable({ id: 'ranking', container: '#ranking-data', rows, pageSize: 30, defaultSort: 'position', searchPlaceholder: 'Pesquisar discente ou matrícula', searchFields: ['name', 'id'], filters: [{ key: 'status', label: 'Conferência', value: row => row.divergences ? 'Com divergência' : 'Conferido', options: ['Conferido', 'Com divergência'] }], columns: [
     { key: 'position', label: 'Posição', value: row => Number(row.position), render: row => `<strong>${row.position}º</strong>`, numeric: true },
     { key: 'name', label: 'Discente', value: row => row.name, render: row => `<button class="student-name-button" type="button" data-student-details="${esc(row.id)}">${esc(row.name)}</button><small>${esc(row.id)}</small>` },
@@ -401,15 +427,37 @@ function dashboardRenderCalendar() {
   $('#calendar-filter-tags').innerHTML = tags.map(([label, value]) => `<span class="filter-tag">${esc(label)}: ${esc(value)}</span>`).join('');
 }
 
+function dashboardEnhanceCalendarActions() {
+  const exams = dashboardFilteredExams();
+  $('#calendar-list-view').querySelectorAll('.calendar-list-item').forEach((item, index) => {
+    const exam = exams[index];
+    if (!exam) return;
+    const actions = document.createElement('div');
+    actions.className = 'calendar-item-actions';
+    actions.innerHTML = `<button class="button button-outline-dark button-compact" type="button" data-edit-exam="${exam.id}">Editar</button><button class="button button-danger button-compact" type="button" data-delete-exam="${exam.id}">Excluir</button>`;
+    item.append(actions);
+  });
+}
+
 function dashboardRenderReports() {
+  const student = $('#report-filter-student'), subject = $('#report-filter-subject');
+  if (student && subject) {
+    const currentStudent = student.value, currentSubject = subject.value;
+    student.innerHTML = '<option value="">Todos</option>' + cache.students.map(item => `<option value="${esc(item.id)}">${esc(item.name)} — ${esc(item.id)}</option>`).join('');
+    subject.innerHTML = '<option value="">Todas</option>' + cache.subjects.map(item => `<option value="${item.id}">${esc(item.name)}</option>`).join('');
+    student.value = currentStudent; subject.value = currentSubject;
+    const values = dashboardReportFilterValues();
+    const labels = [['Discente', cache.students.find(item => String(item.id) === values.student)?.name], ['Disciplina', cache.subjects.find(item => String(item.id) === values.subject)?.name], ['Tipo', values.type], ['Situação', values.status], ['Início', values.start], ['Fim', values.end]].filter(([, value]) => value);
+    $('#report-filter-tags').innerHTML = labels.map(([label, value]) => `<span class="filter-tag">${esc(label)}: ${esc(value)}</span>`).join('');
+  }
   const reports = [
-    ['general', '▤', 'Relatório geral', 'Todas as notas, discentes e pontos distribuídos.', 'PDF'],
+    ['general', '▤', 'Relatório geral', 'Todas as notas encontradas pelos filtros aplicados.', 'CSV'],
     ['individual', '♙', 'Relatório individual', 'Relação de desempenho por discente.', 'CSV'],
     ['subject', '◇', 'Relatório por disciplina', 'Lançamentos agrupados por disciplina.', 'CSV'],
     ['pending', '!', 'Relatório de pendências', 'Discentes e disciplinas com lançamento incompleto.', 'CSV'],
     ['divergence', '!', 'Relatório de divergências', 'Valores acima do limite e possíveis duplicidades.', 'CSV'],
     ['ranking', '#', 'Relatório do ranking', 'Posição, pontuação, distribuição e percentual.', 'CSV'],
-    ['history', '◷', 'Histórico de alterações', 'Autorizações e importações registradas.', 'CSV']
+    ['history', '◷', 'Histórico de alterações de notas', 'Lançamentos manuais, coletivos, importados e realizados pelos discentes.', 'CSV']
   ];
   $('#report-cards').innerHTML = reports.map(([type, icon, title, description, format]) => `<article class="report-card"><span class="report-card-icon" aria-hidden="true">${icon}</span><h3>${esc(title)}</h3><p>${esc(description)}</p><button class="button button-outline-dark" type="button" data-report-type="${type}">Gerar ${format}</button></article>`).join('');
 }
@@ -417,6 +465,11 @@ function dashboardRenderReports() {
 function dashboardRenderImports() {
   const history = cache.import_history || [];
   $('#import-history').innerHTML = history.length ? history.map(item => `<div class="import-history-row"><time>${esc(item.at || '')}</time><div><strong>${esc(item.type || 'Importação')}</strong><small>${esc(item.message || '')}</small></div><span class="status-badge ${item.status === 'success' ? 'success' : item.status === 'error' ? 'danger' : 'info'}">${esc(item.status || 'info')}</span></div>`).join('') : '<div class="empty-state"><div><strong>Nenhuma importação registrada</strong><p>O histórico será exibido após uma confirmação de notas ou calendário.</p></div></div>';
+}
+
+function dashboardRenderScoreHistory() {
+  const scoreHistory = cache.score_history || [];
+  $('#score-history').innerHTML = scoreHistory.length ? scoreHistory.map(item => `<div class="import-history-row"><time>${esc(item.at || '')}</time><div><strong>${esc(item.actor || 'Administrador')}</strong><small>${esc(item.message || '')}</small></div><span class="status-badge info">${esc(item.action || 'alteração')}</span></div>`).join('') : '<div class="empty-state"><div><strong>Nenhuma alteração registrada</strong><p>Os próximos lançamentos e alterações serão registrados aqui.</p></div></div>';
 }
 
 function dashboardGlobalSearch(query) {
@@ -441,8 +494,10 @@ function dashboardRenderAll() {
   dashboardRenderRanking();
   dashboardRenderAuthorization();
   dashboardRenderCalendar();
+  dashboardEnhanceCalendarActions();
   dashboardRenderReports();
   dashboardRenderImports();
+  dashboardRenderScoreHistory();
   dashboardGradeContext();
   dashboardUpdateSaveSummaries();
 }
@@ -492,6 +547,22 @@ function dashboardGenerateReport(type) {
 }
 
 /* Conecta o novo painel ao carregamento de dados já utilizado pelo sistema. */
+dashboardGenerateReport = function filteredDashboardReport(type) {
+  const message = $('#reports-message');
+  const filteredScores = dashboardFilteredScoreRows();
+  const filters = dashboardReportFilterValues();
+  let rows = [], columns = [], name = type;
+  const scoreColumns = [{ key: 'student', label: 'Discente' }, { key: 'student_id', label: 'Matrícula' }, { key: 'subject', label: 'Disciplina' }, { key: 'exam1', label: 'AVC/1º TAF' }, { key: 'exam2', label: 'AVF/2º TAF' }, { key: 'work', label: 'Trabalho/3º TAF' }, { key: 'status', label: 'Resultado' }, { key: 'total', label: 'Total' }];
+  if (type === 'general' || type === 'subject') { rows = filteredScores; columns = scoreColumns; }
+  if (type === 'individual') { rows = (cache.ranking || []).filter(item => !filters.student || String(item.id) === filters.student); columns = [{ key: 'name', label: 'Discente' }, { key: 'id', label: 'Matrícula' }, { key: 'position', label: 'Posição' }, { key: 'points', label: 'Pontos' }, { key: 'distributed', label: 'Distribuídos' }, { key: 'percentage', label: 'Percentual' }]; }
+  if (type === 'pending') { rows = filteredScores.filter(item => !item.complete); columns = scoreColumns; }
+  if (type === 'divergence') { rows = filteredScores.flatMap(score => score.errors.map(error => ({ student_id: score.student_id, subject: score.subject, error }))); columns = [{ key: 'student_id', label: 'Matrícula' }, { key: 'subject', label: 'Disciplina' }, { key: 'error', label: 'Divergência' }]; }
+  if (type === 'ranking') { rows = (cache.ranking || []).filter(item => !filters.student || String(item.id) === filters.student); columns = [{ key: 'position', label: 'Posição' }, { key: 'name', label: 'Discente' }, { key: 'points', label: 'Pontos obtidos' }, { key: 'distributed', label: 'Pontos distribuídos' }, { key: 'percentage', label: 'Percentual' }]; }
+  if (type === 'history') { rows = cache.score_history || []; columns = [{ key: 'at', label: 'Data' }, { key: 'actor', label: 'Responsável' }, { key: 'action', label: 'Ação' }, { key: 'message', label: 'Descrição' }]; }
+  dashboardCsvDownload(`relatorio-${name}-${new Date().toISOString().slice(0, 10)}.csv`, rows, columns);
+  message.textContent = `Relatório gerado com ${rows.length} registro(s) conforme os filtros aplicados.`;
+};
+
 const dashboardBaseLoadData = loadData;
 loadData = async function enhancedLoadData() {
   const result = await dashboardBaseLoadData();
@@ -544,9 +615,46 @@ $('#authorization-save-button').addEventListener('click', () => dashboardSaveAut
 $('#authorization-block-button').addEventListener('click', () => dashboardSaveAuthorization('block'));
 $('#authorization-revoke-button').addEventListener('click', () => dashboardSaveAuthorization('revoke'));
 
-document.querySelectorAll('[data-calendar-mode]').forEach(button => button.addEventListener('click', () => { dashboardCalendarMode = button.dataset.calendarMode; document.querySelectorAll('[data-calendar-mode]').forEach(item => item.classList.toggle('active', item === button)); dashboardRenderCalendar(); }));
-['calendar-filter-month', 'calendar-filter-subject', 'calendar-filter-type', 'calendar-filter-status'].forEach(id => $(`#${id}`).addEventListener('change', dashboardRenderCalendar));
+document.querySelectorAll('[data-calendar-mode]').forEach(button => button.addEventListener('click', () => { dashboardCalendarMode = button.dataset.calendarMode; document.querySelectorAll('[data-calendar-mode]').forEach(item => item.classList.toggle('active', item === button)); dashboardRenderCalendar(); dashboardEnhanceCalendarActions(); }));
+['calendar-filter-month', 'calendar-filter-subject', 'calendar-filter-type', 'calendar-filter-status'].forEach(id => $(`#${id}`).addEventListener('change', () => { dashboardRenderCalendar(); dashboardEnhanceCalendarActions(); }));
+['report-filter-student', 'report-filter-subject', 'report-filter-type', 'report-filter-status', 'report-filter-start', 'report-filter-end'].forEach(id => $(`#${id}`).addEventListener('change', () => { dashboardRenderReports(); dashboardRenderScores(); }));
+$('#report-clear-filters').addEventListener('click', () => { ['report-filter-student', 'report-filter-subject', 'report-filter-type', 'report-filter-status', 'report-filter-start', 'report-filter-end'].forEach(id => { $(`#${id}`).value = ''; }); const state = dashboardTableStates.get('notas-lancadas'); if (state) { state.search = ''; state.filters = {}; state.page = 1; } dashboardRenderReports(); dashboardRenderScores(); });
 $('#report-cards').addEventListener('click', event => { const button = event.target.closest('[data-report-type]'); if (button) dashboardGenerateReport(button.dataset.reportType); });
+document.addEventListener('click', async event => {
+  const editButton = event.target.closest('[data-edit-exam]');
+  if (editButton) {
+    const exam = cache.exams.find(item => String(item.id) === editButton.dataset.editExam);
+    if (!exam) return;
+    const form = $('#exam-form');
+    form.elements.id.value = exam.id; form.elements.date.value = exam.date; form.elements.subject.value = exam.subject;
+    updateCalendarTypes(); form.elements.type.value = exam.type; form.elements.time.value = exam.time; form.elements.place.value = exam.place;
+    $('#exam-form-title').textContent = 'Editar avaliação'; $('#exam-save-button').textContent = 'Salvar alterações'; $('#exam-cancel-edit').hidden = false;
+    form.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' }); form.elements.date.focus();
+  }
+  const deleteButton = event.target.closest('[data-delete-exam]');
+  if (deleteButton) {
+    const exam = cache.exams.find(item => String(item.id) === deleteButton.dataset.deleteExam);
+    if (!exam || !window.confirm(`Excluir a avaliação de “${exam.subject}” em ${exam.date}?`)) return;
+    deleteButton.disabled = true;
+    try { await api('/api/admin/exam/delete', { method: 'POST', body: JSON.stringify({ id: exam.id }) }); await loadData(); }
+    catch (error) { $('#exam-form .panel-message').textContent = `Erro ao excluir: ${error.message}`; deleteButton.disabled = false; }
+  }
+});
+$('#exam-cancel-edit').addEventListener('click', () => { const form = $('#exam-form'); form.reset(); form.elements.id.value = ''; $('#exam-form-title').textContent = 'Cadastrar avaliação'; $('#exam-save-button').textContent = 'Cadastrar no calendário'; $('#exam-cancel-edit').hidden = true; });
+new MutationObserver(() => { const message = $('#exam-form .panel-message').textContent; if (message.includes('cadastrada')) { $('#exam-form-title').textContent = 'Cadastrar avaliação'; $('#exam-save-button').textContent = 'Cadastrar no calendário'; $('#exam-cancel-edit').hidden = true; } }).observe($('#exam-form .panel-message'), { childList: true, subtree: true });
+$('#ranking-refresh-button').addEventListener('click', async event => {
+  const button = event.currentTarget, message = $('#ranking-updated-at');
+  button.disabled = true; button.textContent = 'Atualizando...'; message.textContent = 'Recalculando o ranking com os dados atuais...';
+  try {
+    const result = await api('/api/admin/ranking/refresh', { method: 'POST', body: '{}' });
+    cache.ranking = result.ranking || [];
+    cache.ranking_updated_at = result.ranking_updated_at;
+    dashboardMetrics = dashboardBuildMetrics();
+    dashboardRenderRanking();
+    message.textContent = `Ranking atualizado com sucesso em ${result.ranking_updated_at}.`;
+  } catch (error) { message.textContent = `Erro ao atualizar o ranking: ${error.message}`; }
+  finally { button.disabled = false; button.textContent = 'Atualizar ranking'; }
+});
 
 $('#compact-tables-preference').checked = localStorage.getItem('efas-admin-compact-tables') === '1';
 $('#reduce-motion-preference').checked = localStorage.getItem('efas-admin-reduce-motion') === '1';
