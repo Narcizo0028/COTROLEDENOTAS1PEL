@@ -266,7 +266,7 @@ def initialize():
         db.commit()
 
 def subject_rows(db):
-    return [dict(x) for x in db.execute("SELECT id,hours,name,exam_count,grading_mode FROM subjects ORDER BY hours,name")]
+    return [dict(x) for x in db.execute("SELECT id,hours,name,exam_count,grading_mode FROM subjects ORDER BY name COLLATE NOCASE")]
 
 def parse_calendar_pdf(raw):
     """Extrai avaliações do modelo oficial de calendário da EFAS."""
@@ -414,6 +414,10 @@ def ranking(db):
         last=row["points"]; item=dict(row); item["position"]=position; item["average"]=round(row["points"]/row["subjects_count"],2) if row["subjects_count"] else 0; result.append(item)
     return result
 
+def student_ranking_view(rows):
+    """Expõe somente colocação e pontuação, sem qualquer dado identificador."""
+    return [{key:item[key] for key in ("position","points","distributed","average")} for item in rows]
+
 def notes_report_pdf(db):
     """Gera o relatório administrativo de lançamentos em PDF."""
     from reportlab.lib import colors
@@ -431,6 +435,7 @@ def notes_report_pdf(db):
     output=io.BytesIO();styles=getSampleStyleSheet()
     title=ParagraphStyle('ReportTitle',parent=styles['Title'],fontName='Helvetica-Bold',fontSize=17,leading=20,textColor=colors.HexColor('#171713'),alignment=TA_CENTER,spaceAfter=4*mm)
     subtitle=ParagraphStyle('ReportSubtitle',parent=styles['Normal'],fontName='Helvetica',fontSize=8.5,leading=11,textColor=colors.HexColor('#5f5d55'),alignment=TA_CENTER,spaceAfter=5*mm)
+    section_title=ParagraphStyle('ReportSectionTitle',parent=styles['Heading2'],fontName='Helvetica-Bold',fontSize=11,leading=14,textColor=colors.HexColor('#171713'),spaceBefore=6*mm,spaceAfter=3*mm)
     cell=ParagraphStyle('ReportCell',parent=styles['Normal'],fontName='Helvetica',fontSize=7,leading=8.5,textColor=colors.HexColor('#171713'),alignment=TA_LEFT)
     head=ParagraphStyle('ReportHead',parent=cell,fontName='Helvetica-Bold',textColor=colors.white,alignment=TA_CENTER)
     doc=SimpleDocTemplate(output,pagesize=landscape(A4),leftMargin=10*mm,rightMargin=10*mm,topMargin=12*mm,bottomMargin=13*mm,title='Relatório de lançamentos de notas',author='CFS - 1º Pelotão')
@@ -447,6 +452,16 @@ def notes_report_pdf(db):
         table=Table(data,colWidths=[43*mm,23*mm,72*mm,25*mm,25*mm,30*mm,28*mm],repeatRows=1,hAlign='CENTER')
         table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#8a6b25')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(3,1),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#c9c2b2')),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f5f2e9')]),('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),3)]));story.append(table)
     else:story.append(Paragraph('Nenhum lançamento de nota foi encontrado.',styles['Normal']))
+    distributed_rows=sorted(ranking(db),key=lambda item:str(item['name']).casefold())
+    story.append(Paragraph('Pontos distribuídos por discente',section_title))
+    if distributed_rows:
+        distributed_data=[[Paragraph('Discente',head),Paragraph('Matrícula',head),Paragraph('Pontos distribuídos',head)]]
+        for item in distributed_rows:
+            distributed_data.append([Paragraph(str(item['name']),cell),Paragraph(str(item['id']),cell),Paragraph(fmt(item['distributed']),cell)])
+        distributed_table=Table(distributed_data,colWidths=[90*mm,35*mm,42*mm],repeatRows=1,hAlign='LEFT')
+        distributed_table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#8a6b25')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,1),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#c9c2b2')),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f5f2e9')]),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
+        story.append(distributed_table)
+    else:story.append(Paragraph('Nenhum discente cadastrado.',styles['Normal']))
     story.extend([Spacer(1,7*mm),KeepTogether([Paragraph(f'Total de lançamentos: {len(rows)}',styles['Normal']),Spacer(1,9*mm),Paragraph('Conferido por: ____________________________________________    Data: ____/____/________',styles['Normal'])])])
     def footer(canvas,document):
         canvas.saveState();canvas.setFont('Helvetica',7);canvas.setFillColor(colors.HexColor('#69675f'));canvas.drawString(10*mm,7*mm,'Documento administrativo - Controle de Notas CFS / 1º Pelotão');canvas.drawRightString(landscape(A4)[0]-10*mm,7*mm,f'Página {document.page}');canvas.restoreState()
@@ -459,6 +474,10 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+        if urlsplit(self.path).path.endswith((".html",".js",".css")):
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
         super().end_headers()
     def body(self):
         try: return json.loads(self.rfile.read(int(self.headers.get("Content-Length",0))))
@@ -519,8 +538,8 @@ class Handler(SimpleHTTPRequestHandler):
                 scores=[dict(x) for x in db.execute("SELECT sub.id subject_id,sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(student["id"],))]
                 entry_enabled=student_entry_enabled(db)
                 entry_sheet=student_entry_sheet(db,student["id"]) if entry_enabled else []
-                own=next((x for x in ranking(db) if x["id"]==student["id"]),None)
-            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"ranking":{k:own[k] for k in ("position","points","distributed","average")}},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
+                complete_ranking=ranking(db);own=next((x for x in complete_ranking if x["id"]==student["id"]),None)
+            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"ranking":{k:own[k] for k in ("position","points","distributed","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
         if self.path=="/api/student/password":
             sid=self.student()
             if not sid:self.output({"error":"Sessão expirada. Consulte suas notas novamente."},401);return
@@ -544,7 +563,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("Selecione uma disciplina e envie o resultado.")
                 with connect() as db:
                     if not student_entry_enabled(db):
-                        raise ValueError("O lanÃ§amento de notas pelos discentes estÃ¡ indisponÃ­vel no momento.")
+                        raise ValueError("O lançamento de notas pelos discentes está indisponível no momento.")
                     allowed={row["id"]:dict(row) for row in db.execute(
                         "SELECT id,name,exam_count,grading_mode FROM subjects ORDER BY name"
                     )}
@@ -580,7 +599,7 @@ class Handler(SimpleHTTPRequestHandler):
                             raise sqlite3.Error("A gravação não pôde ser confirmada no banco de dados. Tente novamente.")
                     sheet=student_entry_sheet(db,sid)
                     scores=[dict(x) for x in db.execute("SELECT sub.id subject_id,sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(sid,))]
-                    own=next((x for x in ranking(db) if x["id"]==sid),None)
+                    complete_ranking=ranking(db);own=next((x for x in complete_ranking if x["id"]==sid),None)
                 self.output({
                     "ok":True,
                     "saved":saved,
@@ -589,6 +608,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "entry_sheet":sheet,
                     "scores":scores,
                     "ranking":{k:own[k] for k in ("position","points","distributed","average")} if own else None,
+                    "ranking_list":student_ranking_view(complete_ranking),
                 });return
             except (ValueError,TypeError,sqlite3.Error) as error:
                 self.output({"error":str(error)},400);return
@@ -741,7 +761,7 @@ class Handler(SimpleHTTPRequestHandler):
             with connect() as db:
                 if self.path=="/api/admin/student-entry":
                     enabled=data.get("enabled")
-                    if not isinstance(enabled,bool):raise ValueError("Informe se o lanÃ§amento deve ficar disponÃ­vel ou indisponÃ­vel.")
+                    if not isinstance(enabled,bool):raise ValueError("Informe se o lançamento deve ficar disponível ou indisponível.")
                     db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
                     db.commit()
                     self.output({"ok":True,"student_entry_enabled":enabled});return
@@ -785,14 +805,14 @@ class Handler(SimpleHTTPRequestHandler):
                     elif mode=='taf': exam1=number('exam1',3);exam2=number('exam2',3);work=number('work',4)
                     elif sub[0]==1: exam1=None;exam2=number("exam2",7);work=number("work",3)
                     else: exam1=number("exam1",3);exam2=number("exam2",4);work=number("work",3)
+                    existing=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
+                    exam1,exam2,work,status=merge_student_score(existing,exam1,exam2,work,status,mode,sub[0])
                     save_score(db,sid,subject_id,exam1,exam2,work,status)
                     db.commit()
-                    if status is not None or exam1 is not None or exam2 is not None or work is not None:
-                        confirmed=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
-                        if not confirmed:raise sqlite3.Error('A conferência da nota gravada não foi concluída.')
-                    else:
-                        if db.execute("SELECT 1 FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone():
-                            raise sqlite3.Error('A limpeza da nota não foi concluída.')
+                    confirmed=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
+                    expected_empty=status is None and exam1 is None and exam2 is None and work is None
+                    if (expected_empty and confirmed) or (not expected_empty and not score_matches(confirmed,exam1,exam2,work,status)):
+                        raise sqlite3.Error('A conferência exata da nota gravada não foi concluída.')
                 elif self.path=="/api/admin/logout":
                     cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);self.output({"ok":True},cookie="efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");return
                 else:self.output({"error":"Rota inexistente."},404);return

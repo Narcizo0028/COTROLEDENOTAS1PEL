@@ -465,6 +465,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .main-nav a[href="#boletim"]::before { content: "⌂"; }
   .main-nav a[href="#calendario"]::before { content: "▦"; }
   .main-nav a[href="#lancamento"]::before { content: "✎"; }
+  .main-nav a[href="#ranking"]::before { content: "★"; }
   .main-nav a[href="#senha"]::before { content: "🔒"; }
   .main-nav a[href="admin.html"]::before,
   .main-nav .nav-admin::before { content: "⚙"; }
@@ -495,6 +496,30 @@ button, a { -webkit-tap-highlight-color: transparent; }
     border-radius: 0 0 9px 9px;
     padding-top: 14px;
   }
+}
+
+.ranking-privacy-note { margin: -8px 0 22px; color: var(--muted); }
+.student-ranking-list { padding: clamp(16px,3vw,28px); color:var(--text); background:#fff; border:1px solid #d8cfb7; border-top:5px solid var(--gold); border-radius:var(--radius); box-shadow:var(--shadow); }
+.student-ranking-table td,.student-ranking-table td strong { color:var(--text); }
+.student-ranking-table th,.student-ranking-table td { vertical-align:middle; }
+.ranking-student-name { display:inline-block; color:var(--black); font-size:.78rem; letter-spacing:-.08em; user-select:none; pointer-events:none; white-space:nowrap; }
+.student-ranking-mobile { display:none; }
+.ranking-mobile-card { padding:16px; background:#fff; border:1px solid var(--line); border-left:4px solid var(--gold); border-radius:10px; }
+.ranking-mobile-position,.ranking-mobile-identity { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.ranking-mobile-position span,.ranking-mobile-identity span,.ranking-mobile-card dt { color:var(--muted); font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+.ranking-mobile-position strong { font:700 1.45rem Georgia,serif; }
+.ranking-mobile-identity { margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
+.ranking-mobile-card dl { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; margin:14px 0 0; }
+.ranking-mobile-card dl div { min-width:0; padding:10px 7px; text-align:center; background:var(--off-white); border-radius:7px; }
+.ranking-mobile-card dt,.ranking-mobile-card dd { margin:0; }
+.ranking-mobile-card dd { margin-top:5px; color:var(--black); font-size:.92rem; font-weight:800; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+@media (max-width:720px) {
+  .student-ranking-list { padding:12px; }
+  .student-ranking-desktop { display:none; }
+  .student-ranking-mobile { display:grid; gap:10px; }
+  .ranking-privacy-note { margin-bottom:14px; font-size:.86rem; }
 }
 
 @media (max-width: 600px) {
