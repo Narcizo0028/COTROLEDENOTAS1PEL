@@ -17,6 +17,7 @@ const studentEntryTable=document.querySelector('#student-entry-table');
 const studentEntryMessage=document.querySelector('#student-entry-message');
 const studentRankingList=document.querySelector('#student-ranking-list');
 const studentEntrySubject=document.querySelector('#student-entry-subject');
+const studentEntryRestrictionMessage=document.querySelector('#student-entry-restriction-message');
 const studentPasswordPanel=document.querySelector('#student-password-panel');
 const studentPasswordForm=document.querySelector('#student-password-form');
 const newPassword=document.querySelector('#student-new-password');
@@ -215,6 +216,7 @@ function renderReport(student){
       <div class="ranking-summary">
         <div><span>Colocação</span><strong>${r.position}º</strong></div>
         <div><span>Pontos</span><strong>${fmt(r.points)} / ${fmt(r.distributed)}</strong></div>
+        <div><span>Percentual</span><strong>${fmt(r.percentage)}%</strong></div>
         <div><span>Média</span><strong>${fmt(r.average)}</strong></div>
       </div>
     </div>
@@ -261,12 +263,12 @@ function renderReport(student){
 function renderStudentRanking(items=[]){
   if(!studentRankingList)return;
   studentRankingList.innerHTML=items.length?`<div class="table-wrap student-ranking-desktop"><table class="grade-table student-ranking-table">
-    <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th></tr></thead>
-    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmt(item.average)}</td></tr>`).join('')}</tbody>
+    <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Percentual</th><th>Média</th></tr></thead>
+    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmt(item.percentage)}%</td><td>${fmt(item.average)}</td></tr>`).join('')}</tbody>
   </table></div><div class="student-ranking-mobile">${items.map(item=>`<article class="ranking-mobile-card">
     <div class="ranking-mobile-position"><span>Colocação</span><strong>${item.position}º</strong></div>
     <div class="ranking-mobile-identity"><span>Discente</span><strong class="ranking-student-name" aria-label="Identidade protegida">████████████</strong></div>
-    <dl><div><dt>Pontos obtidos</dt><dd>${fmt(item.points)}</dd></div><div><dt>Pontos distribuídos</dt><dd>${fmt(item.distributed)}</dd></div><div><dt>Média</dt><dd>${fmt(item.average)}</dd></div></dl>
+    <dl><div><dt>Pontos obtidos</dt><dd>${fmt(item.points)}</dd></div><div><dt>Pontos distribuídos</dt><dd>${fmt(item.distributed)}</dd></div><div><dt>Percentual</dt><dd>${fmt(item.percentage)}%</dd></div><div><dt>Média</dt><dd>${fmt(item.average)}</dd></div></dl>
   </article>`).join('')}</div>`:'<p class="empty-state">Nenhum discente disponível no ranking.</p>';
 }
 
@@ -301,6 +303,10 @@ function renderEntrySheet(sheet){
   studentEntrySheet.sort((a,b)=>a.subject.localeCompare(b.subject,'pt-BR'));
   studentEntrySubject.innerHTML='<option value="">Selecione a disciplina</option>'+studentEntrySheet.map((row,index)=>`<option value="${row.subject_id}">${index+1}. ${esc(row.subject)}</option>`).join('');
   if(studentEntrySheet.some(row=>String(row.subject_id)===selected))studentEntrySubject.value=selected;
+  const restriction=studentSession?.student_subject_restriction||{};
+  studentEntryRestrictionMessage.hidden=!restriction.enabled;
+  studentEntryRestrictionMessage.textContent=restriction.enabled?`Lançamento liberado somente para esta disciplina: ${restriction.subject}`:'';
+  if(restriction.enabled&&studentEntrySheet.length===1)studentEntrySubject.value=String(studentEntrySheet[0].subject_id);
   const chosen=studentEntrySubject.value;
   studentEntryPanel.hidden=false;
   if(!chosen){
@@ -318,7 +324,7 @@ function renderEntrySheet(sheet){
     };
     const title=row.grading_mode==='taf'
       ?`TAF <small class="table-sub">${esc(row.subject)} • 3 avaliações</small>`
-      :`${esc(row.subject)} <small class="table-sub">2 provas + trabalho</small>`;
+      :`${esc(row.subject)} <small class="table-sub">${row.exam_count===1?'Avaliação final + trabalho':'2 avaliações + trabalho'}</small>`;
     if(row.grading_mode==='apt')return`<tr data-subject-id="${row.subject_id}"><td><strong>${esc(row.subject)}</strong></td><td colspan="3">${entryFieldMarkup(row,row.fields[0])}</td></tr>`;
     return`<tr data-subject-id="${row.subject_id}">
       <td><strong>${title}</strong></td>
@@ -332,7 +338,7 @@ function renderEntrySheet(sheet){
     const title=row.grading_mode==='taf'
       ?`TAF • ${esc(row.subject)}`
       :esc(row.subject);
-    const subtitle=row.grading_mode==='taf'?'3 avaliações':'2 provas + trabalho';
+    const subtitle=row.grading_mode==='taf'?'3 avaliações':row.grading_mode==='apt'?'Resultado Apto/Inapto':row.exam_count===1?'Avaliação final + trabalho':'2 avaliações + trabalho';
     return`<article class="entry-card" data-subject-id="${row.subject_id}">
       <header>
         <h4>${title}</h4>
@@ -391,6 +397,8 @@ function clearStudentSessionUi(messageText=''){
   studentEntryTable.innerHTML='';
   studentEntrySheet=[];
   studentEntrySubject.innerHTML='<option value="">Selecione a disciplina</option>';
+  studentEntryRestrictionMessage.hidden=true;
+  studentEntryRestrictionMessage.textContent='';
   studentEntryMessage.textContent='';
   studentPasswordForm.reset();
   updatePasswordMatch();
@@ -434,6 +442,7 @@ studentEntryForm.addEventListener('submit',async e=>{
     if(studentSession){
       studentSession.scores=data.scores||[];
       studentSession.entry_sheet=data.entry_sheet||[];
+      if(data.student_subject_restriction)studentSession.student_subject_restriction=data.student_subject_restriction;
       if(data.ranking)studentSession.ranking=data.ranking;
       if(data.ranking_list)studentSession.ranking_list=data.ranking_list;
       renderReport(studentSession);

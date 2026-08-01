@@ -62,6 +62,7 @@ exam1=excluded.exam1,exam2=excluded.exam2,work=excluded.work,status=excluded.sta
 def connect():
     db = sqlite3.connect(DB, timeout=30, check_same_thread=False)
     db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys=ON")
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA busy_timeout=30000")
     db.execute("PRAGMA synchronous=NORMAL")
@@ -71,25 +72,19 @@ def student_entry_enabled(db):
     row=db.execute("SELECT value FROM settings WHERE key='student_entry_enabled'").fetchone()
     return not row or row["value"]=="1"
 
-def student_entry_subjects(db):
-    rows=db.execute("""
-        SELECT sub.id subject_id, sub.name, sub.hours, sub.exam_count, sub.grading_mode,
-               COALESCE(se.enabled, 1) AS enabled
-        FROM subjects sub
-        LEFT JOIN student_entry_subjects se ON se.subject_id=sub.id
-        ORDER BY sub.name
-    """).fetchall()
-    return [dict(row) for row in rows]
-
-def allowed_student_entry_subjects(db):
-    rows=db.execute("""
-        SELECT sub.id subject_id, sub.name, sub.hours, sub.exam_count, sub.grading_mode
-        FROM subjects sub
-        JOIN student_entry_subjects se ON se.subject_id=sub.id
-        WHERE se.enabled=1
-        ORDER BY sub.name
-    """).fetchall()
-    return {row["subject_id"]: dict(row) for row in rows}
+def student_subject_restriction(db):
+    """Retorna a disciplina que o administrador liberou para o lançamento discente."""
+    enabled=db.execute("SELECT value FROM settings WHERE key='student_subject_restriction_enabled'").fetchone()
+    subject_id=db.execute("SELECT value FROM settings WHERE key='student_subject_restriction_id'").fetchone()
+    try:selected_id=int(subject_id["value"]) if subject_id and subject_id["value"] else None
+    except (TypeError,ValueError):selected_id=None
+    subject=db.execute("SELECT id,name FROM subjects WHERE id=?",(selected_id,)).fetchone() if selected_id else None
+    active=bool(enabled and enabled["value"]=="1" and subject)
+    return {
+        "enabled":active,
+        "subject_id":int(subject["id"]) if active else None,
+        "subject":subject["name"] if active else None,
+    }
 
 def exam_is_visible(exam, now=None):
     """Mantém a avaliação pública somente até duas horas após o horário agendado."""
@@ -205,14 +200,17 @@ def subject_fields(subject):
     ]
 
 def student_entry_sheet(db, student_id):
+    restriction=student_subject_restriction(db)
+    restriction_sql="WHERE sub.id=?" if restriction["enabled"] else ""
+    parameters=(student_id,restriction["subject_id"]) if restriction["enabled"] else (student_id,)
     rows = db.execute(
         """SELECT sub.id subject_id, sub.name subject, sub.hours, sub.exam_count, sub.grading_mode,
                   sc.exam1, sc.exam2, sc.work, sc.status
            FROM subjects sub
-           JOIN student_entry_subjects se ON se.subject_id=sub.id AND se.enabled=1
            LEFT JOIN scores sc ON sc.subject_id=sub.id AND sc.student_id=?
-           ORDER BY sub.name"""
-        ,(student_id,),
+           %s
+           ORDER BY sub.name""" % restriction_sql
+        ,parameters,
     ).fetchall()
     sheet = []
     for row in rows:
@@ -257,8 +255,7 @@ def initialize():
         CREATE TABLE IF NOT EXISTS exams(id INTEGER PRIMARY KEY,date TEXT,subject TEXT,time TEXT,place TEXT,type TEXT);
         CREATE TABLE IF NOT EXISTS students(id TEXT PRIMARY KEY,name TEXT NOT NULL,rank TEXT NOT NULL,salt TEXT NOT NULL,access_hash TEXT NOT NULL,observation TEXT NOT NULL DEFAULT '',must_change INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS subjects(id INTEGER PRIMARY KEY,hours INTEGER NOT NULL,name TEXT UNIQUE NOT NULL,exam_count INTEGER NOT NULL,grading_mode TEXT NOT NULL DEFAULT 'normal');
-        CREATE TABLE IF NOT EXISTS scores(student_id TEXT NOT NULL,subject_id INTEGER NOT NULL,exam1 REAL,exam2 REAL,work REAL,status TEXT,PRIMARY KEY(student_id,subject_id));
-        CREATE TABLE IF NOT EXISTS student_entry_subjects(subject_id INTEGER PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS scores(student_id TEXT NOT NULL,subject_id INTEGER NOT NULL,exam1 REAL,exam2 REAL,work REAL,status TEXT,PRIMARY KEY(student_id,subject_id),FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE,FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         """)
         columns = [x[1] for x in db.execute("PRAGMA table_info(students)")]
@@ -269,6 +266,8 @@ def initialize():
         score_columns = [x[1] for x in db.execute("PRAGMA table_info(scores)")]
         if "status" not in score_columns: db.execute("ALTER TABLE scores ADD COLUMN status TEXT")
         db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled','1') ON CONFLICT(key) DO NOTHING")
+        db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_enabled','0') ON CONFLICT(key) DO NOTHING")
+        db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_id','') ON CONFLICT(key) DO NOTHING")
         if not db.execute("SELECT 1 FROM admins WHERE username=?", (USER,)).fetchone():
             if len(INITIAL_PASSWORD) < 12:
                 raise RuntimeError("Defina EFAS_INITIAL_ADMIN_PASSWORD com pelo menos 12 caracteres antes do primeiro uso.")
@@ -276,7 +275,24 @@ def initialize():
         db.executemany("INSERT INTO subjects(hours,name,exam_count) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET hours=excluded.hours,exam_count=excluded.exam_count",SUBJECTS)
         db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
         db.execute("UPDATE subjects SET grading_mode='taf' WHERE name='Educação Física Militar'")
-        db.execute("INSERT INTO student_entry_subjects(subject_id,enabled) SELECT id,1 FROM subjects ON CONFLICT(subject_id) DO NOTHING")
+        # Bancos antigos não possuíam chaves estrangeiras. A migração preserva apenas vínculos válidos.
+        if not db.execute("PRAGMA foreign_key_list(scores)").fetchall():
+            db.executescript("""
+            BEGIN IMMEDIATE;
+            CREATE TABLE scores_new(
+              student_id TEXT NOT NULL,subject_id INTEGER NOT NULL,exam1 REAL,exam2 REAL,work REAL,status TEXT,
+              PRIMARY KEY(student_id,subject_id),
+              FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE,
+              FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+            );
+            INSERT INTO scores_new(student_id,subject_id,exam1,exam2,work,status)
+              SELECT sc.student_id,sc.subject_id,sc.exam1,sc.exam2,sc.work,sc.status
+              FROM scores sc JOIN students st ON st.id=sc.student_id JOIN subjects sub ON sub.id=sc.subject_id;
+            DROP TABLE scores;
+            ALTER TABLE scores_new RENAME TO scores;
+            COMMIT;
+            """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_scores_subject_id ON scores(subject_id)")
         calendar_version=db.execute("SELECT value FROM settings WHERE key='official_calendar_version'").fetchone()
         if not calendar_version:
             db.execute("DELETE FROM exams")
@@ -287,6 +303,7 @@ def initialize():
           WHERE exam1 IS NOT NULL AND subject_id IN
           (SELECT id FROM subjects WHERE exam_count=1 AND grading_mode='normal')""")
         db.commit()
+        db.execute("PRAGMA optimize")
 
 def subject_rows(db):
     return [dict(x) for x in db.execute("SELECT id,hours,name,exam_count,grading_mode FROM subjects ORDER BY name COLLATE NOCASE")]
@@ -304,15 +321,37 @@ def parse_calendar_pdf(raw):
     if 'CALENDÁRIO DE PROVAS' not in text.upper():raise ValueError('O arquivo não parece ser um calendário oficial de provas.')
     aliases={
       'Redação de Documentos Instituc. da':'Redação de Documentos Institucionais da PMMG',
+      'Redação de Documentos Instituc. da PMMG':'Redação de Documentos Institucionais da PMMG',
+      'Redação de Documentos Instituc. da PMMG.':'Redação de Documentos Institucionais da PMMG',
       'Legislação Institucional Aplicada à Gest.':'Legislação Institucional Aplicada à Gestão de Recursos Humanos',
+      'Legislação Institucional Aplicada à Gest. de Recursos Humanos':'Legislação Institucional Aplicada à Gestão de Recursos Humanos',
     }
-    valid_subjects={name:name for _,name,_ in SUBJECTS};months={'Jan':'01','Fev':'02','Mar':'03','Abr':'04','Mai':'05','Jun':'06','Jul':'07','Ago':'08','Set':'09','Out':'10','Nov':'11','Dez':'12'}
+    def normalized_subject(value):
+        value=unicodedata.normalize('NFKD',str(value or '')).encode('ascii','ignore').decode().lower()
+        return re.sub(r'[^a-z0-9]+',' ',value).strip()
+    valid_subjects={name:name for _,name,_ in SUBJECTS}
+    normalized_valid={normalized_subject(name):name for name in valid_subjects}
+    normalized_aliases={normalized_subject(source):target for source,target in aliases.items()}
+    def identify_subject(value):
+        if value in aliases:return aliases[value]
+        if value in valid_subjects:return value
+        candidate=normalized_subject(value)
+        if candidate in normalized_aliases:return normalized_aliases[candidate]
+        if candidate in normalized_valid:return normalized_valid[candidate]
+        matches=[]
+        for normalized,name in normalized_valid.items():
+            ratio=difflib.SequenceMatcher(None,candidate,normalized).ratio()
+            if candidate and (normalized.startswith(candidate) or candidate.startswith(normalized)):ratio=max(ratio,.92)
+            matches.append((ratio,name))
+        ratio,name=max(matches,key=lambda item:item[0])
+        return name if ratio>=.72 else None
+    months={'Jan':'01','Fev':'02','Mar':'03','Abr':'04','Mai':'05','Jun':'06','Jul':'07','Ago':'08','Set':'09','Out':'10','Nov':'11','Dez':'12'}
     pattern=re.compile(r'^(.+?)\s+([Xx-])\s+([Xx-])\s+(\d{2})(Jan|Fev|Mar|Abr|Mai|Jun|Jul|Ago|Set|Out|Nov|Dez)(\d{2})\s+(\d{2}h\d{2}min)\s+(\d+)\s+Minutos$',re.IGNORECASE)
     events=[]
     for source_line in text.splitlines():
         line=' '.join(source_line.split());match=pattern.match(line)
         if not match:continue
-        raw_subject,vf,vc,day,month,year,hour,duration=match.groups();subject=aliases.get(raw_subject,valid_subjects.get(raw_subject))
+        raw_subject,vf,vc,day,month,year,hour,duration=match.groups();subject=identify_subject(raw_subject)
         if not subject:raise ValueError(f'Disciplina não reconhecida no PDF: {raw_subject}.')
         kind='Avaliação Final (AVF)' if vf.upper()=='X' else 'Avaliação Complementar (AVC)' if vc.upper()=='X' else None
         if not kind:raise ValueError(f'Tipo de avaliação não identificado para {subject}.')
@@ -322,6 +361,28 @@ def parse_calendar_pdf(raw):
     if len(events)!=len(date_tokens):raise ValueError('Algumas linhas do calendário não puderam ser interpretadas. Nenhuma alteração foi realizada.')
     if len(events)!=len(set(events)):raise ValueError('O PDF contém avaliações duplicadas.')
     return sorted(events,key=lambda item:(item[0],item[1]))
+
+def validate_calendar_events(db, entries):
+    """Valida eventos cadastrados manualmente ou confirmados após a prévia do PDF."""
+    if not isinstance(entries,list) or not 1<=len(entries)<=200:
+        raise ValueError('Informe de 1 a 200 avaliações para atualizar o calendário.')
+    valid_subjects={row["name"] for row in db.execute("SELECT name FROM subjects")}
+    validated=[]
+    for index,entry in enumerate(entries,1):
+        if not isinstance(entry,(dict,list,tuple)):raise ValueError(f'Avaliação {index}: formato inválido.')
+        if isinstance(entry,dict):values=tuple(str(entry.get(key,'')).strip() for key in ('date','subject','time','place','type'))
+        else:values=tuple(str(value).strip() for value in entry)
+        if len(values)!=5 or any(not value for value in values):raise ValueError(f'Avaliação {index}: preencha data, disciplina, horário, local e tipo.')
+        date,subject,hour,place,kind=values
+        try:
+            parsed=datetime.strptime(date,'%Y-%m-%d')
+            if parsed.strftime('%Y-%m-%d')!=date:raise ValueError
+        except ValueError:raise ValueError(f'Avaliação {index}: data inválida.')
+        if subject not in valid_subjects:raise ValueError(f'Avaliação {index}: disciplina não cadastrada: {subject}.')
+        if len(hour)>40 or len(place)>160 or len(kind)>160:raise ValueError(f'Avaliação {index}: um dos textos ultrapassa o limite permitido.')
+        validated.append((date,subject,hour,place,kind))
+    if len(validated)!=len(set(validated)):raise ValueError('Há avaliações duplicadas na confirmação.')
+    return sorted(validated,key=lambda item:(item[0],item[2],item[1]))
 
 def parse_student_scores_pdf(raw, subjects, student_id):
     """Extrai notas do relatório individual ou filtra o relatório geral por matrícula."""
@@ -430,16 +491,24 @@ def ranking(db):
       ),0) distributed,
       COUNT(CASE WHEN sub.grading_mode!='apt' AND (sc.exam1 IS NOT NULL OR sc.exam2 IS NOT NULL OR sc.work IS NOT NULL) THEN 1 END) subjects_count
       FROM students s LEFT JOIN scores sc ON sc.student_id=s.id LEFT JOIN subjects sub ON sub.id=sc.subject_id
-      GROUP BY s.id ORDER BY points DESC,s.name""").fetchall()
-    result=[]; last=None; position=0
-    for index,row in enumerate(rows,1):
-        if last is None or row["points"]<last: position=index
-        last=row["points"]; item=dict(row); item["position"]=position; item["average"]=round(row["points"]/row["subjects_count"],2) if row["subjects_count"] else 0; result.append(item)
+      GROUP BY s.id""").fetchall()
+    result=[]
+    for row in rows:
+        item=dict(row)
+        item["percentage"]=round((float(row["points"])/float(row["distributed"]))*100,2) if row["distributed"] else 0
+        item["average"]=round(row["points"]/row["subjects_count"],2) if row["subjects_count"] else 0
+        result.append(item)
+    result.sort(key=lambda item:(-item["percentage"],-float(item["points"]),-float(item["distributed"]),str(item["name"]).casefold()))
+    last=None;position=0
+    for index,item in enumerate(result,1):
+        criteria=(item["percentage"],float(item["points"]),float(item["distributed"]))
+        if last is None or criteria!=last:position=index
+        item["position"]=position;last=criteria
     return result
 
 def student_ranking_view(rows):
     """Expõe somente colocação e pontuação, sem qualquer dado identificador."""
-    return [{key:item[key] for key in ("position","points","distributed","average")} for item in rows]
+    return [{key:item[key] for key in ("position","points","distributed","percentage","average")} for item in rows]
 
 def notes_report_pdf(db):
     """Gera o relatório administrativo de lançamentos em PDF."""
@@ -536,7 +605,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/admin/data":
             if not self.require_admin():return
             with connect() as db:
-                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_entry_subjects":student_entry_subjects(db)})
+                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_subject_restriction":student_subject_restriction(db)})
             return
         if path=="/api/admin/report.pdf":
             if not self.require_admin():return
@@ -560,9 +629,10 @@ class Handler(SimpleHTTPRequestHandler):
                 if not student or not verify(data.get("code",""),student["salt"],student["access_hash"]):self.output({"error":"Credenciais inválidas."},401);return
                 scores=[dict(x) for x in db.execute("SELECT sub.id subject_id,sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(student["id"],))]
                 entry_enabled=student_entry_enabled(db)
+                restriction=student_subject_restriction(db)
                 entry_sheet=student_entry_sheet(db,student["id"]) if entry_enabled else []
                 complete_ranking=ranking(db);own=next((x for x in complete_ranking if x["id"]==student["id"]),None)
-            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"ranking":{k:own[k] for k in ("position","points","distributed","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
+            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"student_subject_restriction":restriction,"ranking":{k:own[k] for k in ("position","points","distributed","percentage","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
         if self.path=="/api/student/password":
             sid=self.student()
             if not sid:self.output({"error":"Sessão expirada. Consulte suas notas novamente."},401);return
@@ -587,7 +657,11 @@ class Handler(SimpleHTTPRequestHandler):
                 with connect() as db:
                     if not student_entry_enabled(db):
                         raise ValueError("O lançamento de notas pelos discentes está indisponível no momento.")
-                    allowed=allowed_student_entry_subjects(db)
+                    restriction=student_subject_restriction(db)
+                    allowed={row["id"]:dict(row) for row in db.execute(
+                        "SELECT id,name,exam_count,grading_mode FROM subjects WHERE (?=0 OR id=?) ORDER BY name",
+                        (1 if restriction["enabled"] else 0,restriction["subject_id"] or 0),
+                    )}
                     if len(entries)>len(allowed):raise ValueError("Quantidade de disciplinas acima do permitido.")
                     prepared=[];seen=set()
                     for entry in entries:
@@ -595,7 +669,9 @@ class Handler(SimpleHTTPRequestHandler):
                         if subject_id in seen:raise ValueError("Há disciplinas duplicadas no envio.")
                         seen.add(subject_id)
                         subject=allowed.get(subject_id)
-                        if not subject:raise ValueError("A disciplina selecionada não está cadastrada.")
+                        if not subject:
+                            if restriction["enabled"]:raise ValueError(f"Lançamento liberado somente para esta disciplina: {restriction['subject']}.")
+                            raise ValueError("A disciplina selecionada não está cadastrada.")
                         exam1,exam2,work,status=validate_subject_entry(subject,entry)
                         existing=db.execute(
                             "SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",
@@ -626,9 +702,10 @@ class Handler(SimpleHTTPRequestHandler):
                     "saved":saved,
                     "cleared":cleared,
                     "student_entry_enabled":True,
+                    "student_subject_restriction":restriction,
                     "entry_sheet":sheet,
                     "scores":scores,
-                    "ranking":{k:own[k] for k in ("position","points","distributed","average")} if own else None,
+                    "ranking":{k:own[k] for k in ("position","points","distributed","percentage","average")} if own else None,
                     "ranking_list":student_ranking_view(complete_ranking),
                 });return
             except (ValueError,TypeError,sqlite3.Error) as error:
@@ -637,14 +714,25 @@ class Handler(SimpleHTTPRequestHandler):
         if not user:return
         if self.path=="/api/admin/calendar/import":
             try:
-                encoded=str(data.get("pdf_base64",''));raw=base64.b64decode(encoded,validate=True)
-                if len(raw)>5*1024*1024:raise ValueError('O PDF deve possuir no máximo 5 MB.')
-                events=parse_calendar_pdf(raw);version='imported-'+hashlib.sha256(raw).hexdigest()[:16]
+                action=str(data.get('action','preview')).strip().lower()
+                if action=='preview':
+                    encoded=str(data.get("pdf_base64",''));raw=base64.b64decode(encoded,validate=True)
+                    if not raw:raise ValueError('Selecione o arquivo PDF do calendário.')
+                    if len(raw)>5*1024*1024:raise ValueError('O PDF deve possuir no máximo 5 MB.')
+                    events=parse_calendar_pdf(raw)
+                    self.output({"ok":True,"events":[dict(zip(("date","subject","time","place","type"),event)) for event in events]});return
+                if action!='apply':raise ValueError('Ação de importação inválida.')
                 with connect() as db:
-                    db.execute("DELETE FROM exams");db.executemany("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",events)
+                    events=validate_calendar_events(db,data.get('events'))
+                    canonical=json.dumps(events,ensure_ascii=False,separators=(',',':')).encode()
+                    version='confirmed-'+hashlib.sha256(canonical).hexdigest()[:16]
+                    db.execute("BEGIN IMMEDIATE")
+                    db.execute("DELETE FROM exams")
+                    db.executemany("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",events)
                     db.execute("INSERT INTO settings(key,value) VALUES('official_calendar_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(version,))
+                    db.commit()
                 self.output({"ok":True,"imported":len(events),"version":version});return
-            except (ValueError,TypeError) as error:self.output({"error":str(error)},400);return
+            except (ValueError,TypeError,binascii.Error,sqlite3.Error) as error:self.output({"error":str(error)},400);return
         if self.path=="/api/admin/student-scores/import":
             logs=[]
             try:
@@ -786,25 +874,30 @@ class Handler(SimpleHTTPRequestHandler):
                     db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
                     db.commit()
                     self.output({"ok":True,"student_entry_enabled":enabled});return
-                elif self.path=="/api/admin/student-entry/subjects":
-                    subject_ids=data.get("subject_ids")
-                    if not isinstance(subject_ids,list):raise ValueError("Envie a lista de disciplinas permitidas ao discente.")
-                    all_subjects={row[0] for row in db.execute("SELECT id FROM subjects")}
-                    normalized=[]
-                    for raw in subject_ids:
-                        subject_id=int(raw)
-                        if subject_id not in all_subjects:raise ValueError("Há uma disciplina inválida na seleção.")
-                        normalized.append(subject_id)
-                    db.execute("UPDATE student_entry_subjects SET enabled=0")
-                    if normalized:
-                        db.executemany("INSERT INTO student_entry_subjects(subject_id,enabled) VALUES(?,1) ON CONFLICT(subject_id) DO UPDATE SET enabled=1",[(subject_id,) for subject_id in normalized])
+                elif self.path=="/api/admin/student-entry-restriction":
+                    enabled=data.get("enabled")
+                    if not isinstance(enabled,bool):raise ValueError("Informe se a restrição deve ficar ativada ou desativada.")
+                    current=student_subject_restriction(db)
+                    subject_id=None
+                    subject=None
+                    if enabled:
+                        try:subject_id=int(data.get("subject_id"))
+                        except (TypeError,ValueError):raise ValueError("Selecione a disciplina que ficará liberada.")
+                        subject=db.execute("SELECT id,name FROM subjects WHERE id=?",(subject_id,)).fetchone()
+                        if not subject:raise ValueError("A disciplina selecionada não está cadastrada.")
+                    changed=current["enabled"]!=enabled or (enabled and current["subject_id"]!=subject_id)
+                    if changed and data.get("confirmed") is not True:raise ValueError("Confirme a alteração da disciplina liberada antes de salvar.")
+                    db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
+                    db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(subject_id) if enabled else "",))
                     db.commit()
-                    self.output({"ok":True,"student_entry_subjects":student_entry_subjects(db)});return
+                    self.output({"ok":True,"student_subject_restriction":student_subject_restriction(db)});return
                 elif self.path=="/api/admin/password":
                     password=data.get("password","")
                     if len(password)<12:raise ValueError("A senha deve possuir pelo menos 12 caracteres.")
                     salt,digest=password_hash(password);db.execute("UPDATE admins SET salt=?,password_hash=?,must_change=0 WHERE username=?",(salt,digest,user))
-                elif self.path=="/api/admin/exams":db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",tuple(str(data.get(k,"")).strip() for k in ("date","subject","time","place","type")))
+                elif self.path=="/api/admin/exams":
+                    event=validate_calendar_events(db,[data])[0]
+                    db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",event)
                 elif self.path=="/api/admin/student":
                     sid=str(data.get("student_id","")).strip(); code=str(data.get("access_code","")).strip()
                     if not sid or not data.get("name") or len(code)<6:raise ValueError("Preencha matrícula, nome e código com pelo menos 6 caracteres.")
