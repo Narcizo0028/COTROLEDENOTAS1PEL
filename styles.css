@@ -660,20 +660,3 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .report-table-desktop,
   .entry-table-desktop { display: block; }
 }
-
-/* Restrição do lançamento discente por disciplina */
-.student-subject-restriction { display: grid; gap: 12px; }
-.restriction-heading .eyebrow { margin-bottom: 8px; }
-.restriction-heading h2 { margin: 0 0 10px; font-size: clamp(1.35rem, 2vw, 1.8rem); }
-.restriction-heading .section-note { margin: 0; }
-.restriction-switch { display: flex; align-items: center; gap: 8px; width: max-content; margin: 0; font-size: .9rem; font-weight: 700; }
-.restriction-switch input { width: 16px; height: 16px; margin: 0; accent-color: var(--gold); }
-.restriction-controls { display: grid; grid-template-columns: minmax(180px, 1fr) auto; gap: 10px; align-items: stretch; }
-.restriction-controls select { width: 100%; min-height: 46px; margin: 0; }
-.restriction-controls .button { min-height: 46px; padding: 10px 18px; white-space: nowrap; }
-.restriction-highlight { display: block; width: 100%; margin: 0; padding: 11px 14px; border-left: 4px solid var(--gold); border-radius: 8px; color: #3d3217; background: #f2ead1; box-sizing: border-box; }
-.restriction-highlight[hidden] { display: none; }
-@media (max-width: 720px) {
-  .restriction-controls { grid-template-columns: 1fr; }
-  .restriction-controls .button { width: 100%; }
-}

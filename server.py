@@ -3,7 +3,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import urlsplit
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import base64, binascii, difflib, hashlib, hmac, io, json, os, re, secrets, sqlite3, time, unicodedata
 
@@ -16,10 +16,7 @@ STUDENT_SESSIONS = {}
 USER = os.environ.get("EFAS_ADMIN_USER", "administrador")
 INITIAL_PASSWORD = os.environ.get("EFAS_INITIAL_ADMIN_PASSWORD", "")
 COOKIE_SECURE = os.environ.get("EFAS_COOKIE_SECURE", "0") == "1"
-try:
-    LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
-except Exception:
-    LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo or timezone.utc
+LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 PUBLIC_FILES = {
     "/index.html", "/admin.html", "/styles.css", "/script.js", "/admin.js",
     "/assets/escudo-efas.png",
@@ -74,13 +71,25 @@ def student_entry_enabled(db):
     row=db.execute("SELECT value FROM settings WHERE key='student_entry_enabled'").fetchone()
     return not row or row["value"]=="1"
 
-def student_subject_restriction(db):
-    """Retorna a restrição ativa somente quando a disciplina selecionada existe."""
-    enabled=db.execute("SELECT value FROM settings WHERE key='student_subject_restriction_enabled'").fetchone()
-    selected=db.execute("SELECT value FROM settings WHERE key='student_subject_restriction_id'").fetchone()
-    subject_id=int(selected["value"]) if selected and str(selected["value"]).isdigit() else None
-    subject=db.execute("SELECT id,name FROM subjects WHERE id=?",(subject_id,)).fetchone() if subject_id else None
-    return {"enabled":bool(enabled and enabled["value"]=="1" and subject),"subject_id":subject_id if subject else None,"subject_name":subject["name"] if subject else None}
+def student_entry_subjects(db):
+    rows=db.execute("""
+        SELECT sub.id subject_id, sub.name, sub.hours, sub.exam_count, sub.grading_mode,
+               COALESCE(se.enabled, 1) AS enabled
+        FROM subjects sub
+        LEFT JOIN student_entry_subjects se ON se.subject_id=sub.id
+        ORDER BY sub.name
+    """).fetchall()
+    return [dict(row) for row in rows]
+
+def allowed_student_entry_subjects(db):
+    rows=db.execute("""
+        SELECT sub.id subject_id, sub.name, sub.hours, sub.exam_count, sub.grading_mode
+        FROM subjects sub
+        JOIN student_entry_subjects se ON se.subject_id=sub.id
+        WHERE se.enabled=1
+        ORDER BY sub.name
+    """).fetchall()
+    return {row["subject_id"]: dict(row) for row in rows}
 
 def exam_is_visible(exam, now=None):
     """Mantém a avaliação pública somente até duas horas após o horário agendado."""
@@ -196,16 +205,14 @@ def subject_fields(subject):
     ]
 
 def student_entry_sheet(db, student_id):
-    restriction=student_subject_restriction(db)
-    restriction_sql=" AND sub.id=?" if restriction["enabled"] else ""
-    parameters=(student_id,restriction["subject_id"]) if restriction["enabled"] else (student_id,)
     rows = db.execute(
         """SELECT sub.id subject_id, sub.name subject, sub.hours, sub.exam_count, sub.grading_mode,
                   sc.exam1, sc.exam2, sc.work, sc.status
            FROM subjects sub
+           JOIN student_entry_subjects se ON se.subject_id=sub.id AND se.enabled=1
            LEFT JOIN scores sc ON sc.subject_id=sub.id AND sc.student_id=?
-           WHERE 1=1"""+restriction_sql+" ORDER BY sub.name"
-        ,parameters,
+           ORDER BY sub.name"""
+        ,(student_id,),
     ).fetchall()
     sheet = []
     for row in rows:
@@ -251,6 +258,7 @@ def initialize():
         CREATE TABLE IF NOT EXISTS students(id TEXT PRIMARY KEY,name TEXT NOT NULL,rank TEXT NOT NULL,salt TEXT NOT NULL,access_hash TEXT NOT NULL,observation TEXT NOT NULL DEFAULT '',must_change INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS subjects(id INTEGER PRIMARY KEY,hours INTEGER NOT NULL,name TEXT UNIQUE NOT NULL,exam_count INTEGER NOT NULL,grading_mode TEXT NOT NULL DEFAULT 'normal');
         CREATE TABLE IF NOT EXISTS scores(student_id TEXT NOT NULL,subject_id INTEGER NOT NULL,exam1 REAL,exam2 REAL,work REAL,status TEXT,PRIMARY KEY(student_id,subject_id));
+        CREATE TABLE IF NOT EXISTS student_entry_subjects(subject_id INTEGER PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         """)
         columns = [x[1] for x in db.execute("PRAGMA table_info(students)")]
@@ -261,8 +269,6 @@ def initialize():
         score_columns = [x[1] for x in db.execute("PRAGMA table_info(scores)")]
         if "status" not in score_columns: db.execute("ALTER TABLE scores ADD COLUMN status TEXT")
         db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled','1') ON CONFLICT(key) DO NOTHING")
-        db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_enabled','0') ON CONFLICT(key) DO NOTHING")
-        db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_id','') ON CONFLICT(key) DO NOTHING")
         if not db.execute("SELECT 1 FROM admins WHERE username=?", (USER,)).fetchone():
             if len(INITIAL_PASSWORD) < 12:
                 raise RuntimeError("Defina EFAS_INITIAL_ADMIN_PASSWORD com pelo menos 12 caracteres antes do primeiro uso.")
@@ -270,6 +276,7 @@ def initialize():
         db.executemany("INSERT INTO subjects(hours,name,exam_count) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET hours=excluded.hours,exam_count=excluded.exam_count",SUBJECTS)
         db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
         db.execute("UPDATE subjects SET grading_mode='taf' WHERE name='Educação Física Militar'")
+        db.execute("INSERT INTO student_entry_subjects(subject_id,enabled) SELECT id,1 FROM subjects ON CONFLICT(subject_id) DO NOTHING")
         calendar_version=db.execute("SELECT value FROM settings WHERE key='official_calendar_version'").fetchone()
         if not calendar_version:
             db.execute("DELETE FROM exams")
@@ -418,10 +425,10 @@ def ranking(db):
       COALESCE(SUM(CASE WHEN sub.grading_mode='apt' THEN 0 ELSE COALESCE(sc.exam1,0)+COALESCE(sc.exam2,0)+COALESCE(sc.work,0) END),0) points,
       COALESCE(SUM(
         CASE WHEN sub.grading_mode='apt' THEN 0
-        WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
-        ELSE (CASE WHEN sc.exam1>0 AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work>0 THEN 3 ELSE 0 END) END
+        WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1 IS NOT NULL THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2 IS NOT NULL THEN 3 ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 4 ELSE 0 END)
+        ELSE (CASE WHEN sc.exam1 IS NOT NULL AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2 IS NOT NULL THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 3 ELSE 0 END) END
       ),0) distributed,
-      COUNT(CASE WHEN sub.grading_mode!='apt' AND (sc.exam1>0 OR sc.exam2>0 OR sc.work>0) THEN 1 END) subjects_count
+      COUNT(CASE WHEN sub.grading_mode!='apt' AND (sc.exam1 IS NOT NULL OR sc.exam2 IS NOT NULL OR sc.work IS NOT NULL) THEN 1 END) subjects_count
       FROM students s LEFT JOIN scores sc ON sc.student_id=s.id LEFT JOIN subjects sub ON sub.id=sc.subject_id
       GROUP BY s.id ORDER BY points DESC,s.name""").fetchall()
     result=[]; last=None; position=0
@@ -529,7 +536,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/admin/data":
             if not self.require_admin():return
             with connect() as db:
-                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_subject_restriction":student_subject_restriction(db)})
+                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_entry_subjects":student_entry_subjects(db)})
             return
         if path=="/api/admin/report.pdf":
             if not self.require_admin():return
@@ -554,9 +561,8 @@ class Handler(SimpleHTTPRequestHandler):
                 scores=[dict(x) for x in db.execute("SELECT sub.id subject_id,sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(student["id"],))]
                 entry_enabled=student_entry_enabled(db)
                 entry_sheet=student_entry_sheet(db,student["id"]) if entry_enabled else []
-                entry_restriction=student_subject_restriction(db)
                 complete_ranking=ranking(db);own=next((x for x in complete_ranking if x["id"]==student["id"]),None)
-            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"student_subject_restriction":entry_restriction,"ranking":{k:own[k] for k in ("position","points","distributed","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
+            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"ranking":{k:own[k] for k in ("position","points","distributed","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
         if self.path=="/api/student/password":
             sid=self.student()
             if not sid:self.output({"error":"Sessão expirada. Consulte suas notas novamente."},401);return
@@ -581,14 +587,7 @@ class Handler(SimpleHTTPRequestHandler):
                 with connect() as db:
                     if not student_entry_enabled(db):
                         raise ValueError("O lançamento de notas pelos discentes está indisponível no momento.")
-                    restriction=student_subject_restriction(db)
-                    allowed_query="SELECT id,name,exam_count,grading_mode FROM subjects"
-                    allowed_parameters=()
-                    if restriction["enabled"]:
-                        allowed_query+=" WHERE id=?"
-                        allowed_parameters=(restriction["subject_id"],)
-                    allowed_query+=" ORDER BY name"
-                    allowed={row["id"]:dict(row) for row in db.execute(allowed_query,allowed_parameters)}
+                    allowed=allowed_student_entry_subjects(db)
                     if len(entries)>len(allowed):raise ValueError("Quantidade de disciplinas acima do permitido.")
                     prepared=[];seen=set()
                     for entry in entries:
@@ -596,9 +595,7 @@ class Handler(SimpleHTTPRequestHandler):
                         if subject_id in seen:raise ValueError("Há disciplinas duplicadas no envio.")
                         seen.add(subject_id)
                         subject=allowed.get(subject_id)
-                        if not subject:
-                            if restriction["enabled"]:raise ValueError("O lançamento está liberado somente para a disciplina selecionada pelo administrador.")
-                            raise ValueError("A disciplina selecionada não está cadastrada.")
+                        if not subject:raise ValueError("A disciplina selecionada não está cadastrada.")
                         exam1,exam2,work,status=validate_subject_entry(subject,entry)
                         existing=db.execute(
                             "SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",
@@ -629,7 +626,6 @@ class Handler(SimpleHTTPRequestHandler):
                     "saved":saved,
                     "cleared":cleared,
                     "student_entry_enabled":True,
-                    "student_subject_restriction":restriction,
                     "entry_sheet":sheet,
                     "scores":scores,
                     "ranking":{k:own[k] for k in ("position","points","distributed","average")} if own else None,
@@ -790,17 +786,20 @@ class Handler(SimpleHTTPRequestHandler):
                     db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
                     db.commit()
                     self.output({"ok":True,"student_entry_enabled":enabled});return
-                elif self.path=="/api/admin/student-entry-restriction":
-                    enabled=data.get("enabled")
-                    if not isinstance(enabled,bool):raise ValueError("Informe se a restrição deve ficar ativa ou inativa.")
-                    subject_id=None
-                    if enabled:
-                        subject_id=int(data.get("subject_id") or 0)
-                        if not db.execute("SELECT 1 FROM subjects WHERE id=?",(subject_id,)).fetchone():raise ValueError("Selecione uma disciplina válida antes de ativar a restrição.")
-                    db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
-                    db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(subject_id) if subject_id else "",))
+                elif self.path=="/api/admin/student-entry/subjects":
+                    subject_ids=data.get("subject_ids")
+                    if not isinstance(subject_ids,list):raise ValueError("Envie a lista de disciplinas permitidas ao discente.")
+                    all_subjects={row[0] for row in db.execute("SELECT id FROM subjects")}
+                    normalized=[]
+                    for raw in subject_ids:
+                        subject_id=int(raw)
+                        if subject_id not in all_subjects:raise ValueError("Há uma disciplina inválida na seleção.")
+                        normalized.append(subject_id)
+                    db.execute("UPDATE student_entry_subjects SET enabled=0")
+                    if normalized:
+                        db.executemany("INSERT INTO student_entry_subjects(subject_id,enabled) VALUES(?,1) ON CONFLICT(subject_id) DO UPDATE SET enabled=1",[(subject_id,) for subject_id in normalized])
                     db.commit()
-                    self.output({"ok":True,"student_subject_restriction":student_subject_restriction(db)});return
+                    self.output({"ok":True,"student_entry_subjects":student_entry_subjects(db)});return
                 elif self.path=="/api/admin/password":
                     password=data.get("password","")
                     if len(password)<12:raise ValueError("A senha deve possuir pelo menos 12 caracteres.")
