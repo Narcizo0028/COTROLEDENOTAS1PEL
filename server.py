@@ -71,6 +71,26 @@ def student_entry_enabled(db):
     row=db.execute("SELECT value FROM settings WHERE key='student_entry_enabled'").fetchone()
     return not row or row["value"]=="1"
 
+def student_entry_subjects(db):
+    rows=db.execute("""
+        SELECT sub.id subject_id, sub.name, sub.hours, sub.exam_count, sub.grading_mode,
+               COALESCE(se.enabled, 1) AS enabled
+        FROM subjects sub
+        LEFT JOIN student_entry_subjects se ON se.subject_id=sub.id
+        ORDER BY sub.name
+    """).fetchall()
+    return [dict(row) for row in rows]
+
+def allowed_student_entry_subjects(db):
+    rows=db.execute("""
+        SELECT sub.id subject_id, sub.name, sub.hours, sub.exam_count, sub.grading_mode
+        FROM subjects sub
+        JOIN student_entry_subjects se ON se.subject_id=sub.id
+        WHERE se.enabled=1
+        ORDER BY sub.name
+    """).fetchall()
+    return {row["subject_id"]: dict(row) for row in rows}
+
 def exam_is_visible(exam, now=None):
     """Mantém a avaliação pública somente até duas horas após o horário agendado."""
     now=now or datetime.now(LOCAL_TIMEZONE)
@@ -189,6 +209,7 @@ def student_entry_sheet(db, student_id):
         """SELECT sub.id subject_id, sub.name subject, sub.hours, sub.exam_count, sub.grading_mode,
                   sc.exam1, sc.exam2, sc.work, sc.status
            FROM subjects sub
+           JOIN student_entry_subjects se ON se.subject_id=sub.id AND se.enabled=1
            LEFT JOIN scores sc ON sc.subject_id=sub.id AND sc.student_id=?
            ORDER BY sub.name"""
         ,(student_id,),
@@ -237,6 +258,7 @@ def initialize():
         CREATE TABLE IF NOT EXISTS students(id TEXT PRIMARY KEY,name TEXT NOT NULL,rank TEXT NOT NULL,salt TEXT NOT NULL,access_hash TEXT NOT NULL,observation TEXT NOT NULL DEFAULT '',must_change INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS subjects(id INTEGER PRIMARY KEY,hours INTEGER NOT NULL,name TEXT UNIQUE NOT NULL,exam_count INTEGER NOT NULL,grading_mode TEXT NOT NULL DEFAULT 'normal');
         CREATE TABLE IF NOT EXISTS scores(student_id TEXT NOT NULL,subject_id INTEGER NOT NULL,exam1 REAL,exam2 REAL,work REAL,status TEXT,PRIMARY KEY(student_id,subject_id));
+        CREATE TABLE IF NOT EXISTS student_entry_subjects(subject_id INTEGER PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         """)
         columns = [x[1] for x in db.execute("PRAGMA table_info(students)")]
@@ -254,6 +276,7 @@ def initialize():
         db.executemany("INSERT INTO subjects(hours,name,exam_count) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET hours=excluded.hours,exam_count=excluded.exam_count",SUBJECTS)
         db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
         db.execute("UPDATE subjects SET grading_mode='taf' WHERE name='Educação Física Militar'")
+        db.execute("INSERT INTO student_entry_subjects(subject_id,enabled) SELECT id,1 FROM subjects ON CONFLICT(subject_id) DO NOTHING")
         calendar_version=db.execute("SELECT value FROM settings WHERE key='official_calendar_version'").fetchone()
         if not calendar_version:
             db.execute("DELETE FROM exams")
@@ -513,7 +536,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/admin/data":
             if not self.require_admin():return
             with connect() as db:
-                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db)})
+                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_entry_subjects":student_entry_subjects(db)})
             return
         if path=="/api/admin/report.pdf":
             if not self.require_admin():return
@@ -564,9 +587,7 @@ class Handler(SimpleHTTPRequestHandler):
                 with connect() as db:
                     if not student_entry_enabled(db):
                         raise ValueError("O lançamento de notas pelos discentes está indisponível no momento.")
-                    allowed={row["id"]:dict(row) for row in db.execute(
-                        "SELECT id,name,exam_count,grading_mode FROM subjects ORDER BY name"
-                    )}
+                    allowed=allowed_student_entry_subjects(db)
                     if len(entries)>len(allowed):raise ValueError("Quantidade de disciplinas acima do permitido.")
                     prepared=[];seen=set()
                     for entry in entries:
@@ -765,6 +786,20 @@ class Handler(SimpleHTTPRequestHandler):
                     db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
                     db.commit()
                     self.output({"ok":True,"student_entry_enabled":enabled});return
+                elif self.path=="/api/admin/student-entry/subjects":
+                    subject_ids=data.get("subject_ids")
+                    if not isinstance(subject_ids,list):raise ValueError("Envie a lista de disciplinas permitidas ao discente.")
+                    all_subjects={row[0] for row in db.execute("SELECT id FROM subjects")}
+                    normalized=[]
+                    for raw in subject_ids:
+                        subject_id=int(raw)
+                        if subject_id not in all_subjects:raise ValueError("Há uma disciplina inválida na seleção.")
+                        normalized.append(subject_id)
+                    db.execute("UPDATE student_entry_subjects SET enabled=0")
+                    if normalized:
+                        db.executemany("INSERT INTO student_entry_subjects(subject_id,enabled) VALUES(?,1) ON CONFLICT(subject_id) DO UPDATE SET enabled=1",[(subject_id,) for subject_id in normalized])
+                    db.commit()
+                    self.output({"ok":True,"student_entry_subjects":student_entry_subjects(db)});return
                 elif self.path=="/api/admin/password":
                     password=data.get("password","")
                     if len(password)<12:raise ValueError("A senha deve possuir pelo menos 12 caracteres.")
