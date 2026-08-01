@@ -290,9 +290,6 @@ function entryFieldMarkup(row,field){
 
 function renderEntrySheet(sheet){
   studentEntrySheet=Array.isArray(sheet)?sheet:[];
-  const restrictionNotice=document.querySelector('#student-subject-restriction-notice');
-  const restriction=studentSession?.student_subject_restriction;
-  if(restrictionNotice){restrictionNotice.hidden=!restriction?.enabled;restrictionNotice.textContent=restriction?.enabled?`Lançamento liberado somente para esta disciplina: ${restriction.subject_name}`:'Lançamento liberado somente para esta disciplina';}
   if(!sheet?.length){
     studentEntryPanel.hidden=true;
     studentEntryTable.innerHTML='';
@@ -437,7 +434,6 @@ studentEntryForm.addEventListener('submit',async e=>{
     if(studentSession){
       studentSession.scores=data.scores||[];
       studentSession.entry_sheet=data.entry_sheet||[];
-      if(data.student_subject_restriction)studentSession.student_subject_restriction=data.student_subject_restriction;
       if(data.ranking)studentSession.ranking=data.ranking;
       if(data.ranking_list)studentSession.ranking_list=data.ranking_list;
       renderReport(studentSession);

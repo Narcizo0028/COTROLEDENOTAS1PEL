@@ -71,14 +71,6 @@ def student_entry_enabled(db):
     row=db.execute("SELECT value FROM settings WHERE key='student_entry_enabled'").fetchone()
     return not row or row["value"]=="1"
 
-def student_subject_restriction(db):
-    """Retorna a restrição vigente somente quando a disciplina ainda existe."""
-    enabled=db.execute("SELECT value FROM settings WHERE key='student_subject_restriction_enabled'").fetchone()
-    selected=db.execute("SELECT value FROM settings WHERE key='student_subject_restriction_id'").fetchone()
-    subject_id=int(selected["value"]) if selected and str(selected["value"]).isdigit() else None
-    subject=db.execute("SELECT id,name FROM subjects WHERE id=?",(subject_id,)).fetchone() if subject_id else None
-    return {"enabled":bool(enabled and enabled["value"]=="1" and subject),"subject_id":subject_id if subject else None,"subject_name":subject["name"] if subject else None}
-
 def exam_is_visible(exam, now=None):
     """Mantém a avaliação pública somente até duas horas após o horário agendado."""
     now=now or datetime.now(LOCAL_TIMEZONE)
@@ -193,16 +185,13 @@ def subject_fields(subject):
     ]
 
 def student_entry_sheet(db, student_id):
-    restriction=student_subject_restriction(db)
-    restriction_sql=" AND sub.id=?" if restriction["enabled"] else ""
-    parameters=(student_id,restriction["subject_id"]) if restriction["enabled"] else (student_id,)
     rows = db.execute(
         """SELECT sub.id subject_id, sub.name subject, sub.hours, sub.exam_count, sub.grading_mode,
                   sc.exam1, sc.exam2, sc.work, sc.status
            FROM subjects sub
            LEFT JOIN scores sc ON sc.subject_id=sub.id AND sc.student_id=?
-           WHERE 1=1"""+restriction_sql+" ORDER BY sub.name"
-        ,parameters,
+           ORDER BY sub.name"""
+        ,(student_id,),
     ).fetchall()
     sheet = []
     for row in rows:
@@ -258,8 +247,6 @@ def initialize():
         score_columns = [x[1] for x in db.execute("PRAGMA table_info(scores)")]
         if "status" not in score_columns: db.execute("ALTER TABLE scores ADD COLUMN status TEXT")
         db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled','1') ON CONFLICT(key) DO NOTHING")
-        db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_enabled','0') ON CONFLICT(key) DO NOTHING")
-        db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_id','') ON CONFLICT(key) DO NOTHING")
         if not db.execute("SELECT 1 FROM admins WHERE username=?", (USER,)).fetchone():
             if len(INITIAL_PASSWORD) < 12:
                 raise RuntimeError("Defina EFAS_INITIAL_ADMIN_PASSWORD com pelo menos 12 caracteres antes do primeiro uso.")
@@ -526,7 +513,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/admin/data":
             if not self.require_admin():return
             with connect() as db:
-                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_subject_restriction":student_subject_restriction(db)})
+                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db)})
             return
         if path=="/api/admin/report.pdf":
             if not self.require_admin():return
@@ -551,9 +538,8 @@ class Handler(SimpleHTTPRequestHandler):
                 scores=[dict(x) for x in db.execute("SELECT sub.id subject_id,sub.name subject,sub.hours,sub.exam_count,sub.grading_mode,sc.exam1,sc.exam2,sc.work,sc.status FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id WHERE sc.student_id=? ORDER BY sub.hours,sub.name",(student["id"],))]
                 entry_enabled=student_entry_enabled(db)
                 entry_sheet=student_entry_sheet(db,student["id"]) if entry_enabled else []
-                entry_restriction=student_subject_restriction(db)
                 complete_ranking=ranking(db);own=next((x for x in complete_ranking if x["id"]==student["id"]),None)
-            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"student_subject_restriction":entry_restriction,"ranking":{k:own[k] for k in ("position","points","distributed","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
+            token=secrets.token_urlsafe(32);STUDENT_SESSIONS[token]=(student["id"],time.time()+7200);secure="; Secure" if COOKIE_SECURE else "";self.output({"id":student["id"],"name":student["name"],"rank":student["rank"],"observation":student["observation"],"must_change_password":bool(student["must_change"]),"scores":scores,"entry_sheet":entry_sheet,"student_entry_enabled":entry_enabled,"ranking":{k:own[k] for k in ("position","points","distributed","average")},"ranking_list":student_ranking_view(complete_ranking)},cookie=f"efas_student_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200{secure}");return
         if self.path=="/api/student/password":
             sid=self.student()
             if not sid:self.output({"error":"Sessão expirada. Consulte suas notas novamente."},401);return
@@ -578,14 +564,9 @@ class Handler(SimpleHTTPRequestHandler):
                 with connect() as db:
                     if not student_entry_enabled(db):
                         raise ValueError("O lançamento de notas pelos discentes está indisponível no momento.")
-                    restriction=student_subject_restriction(db)
-                    allowed_query="SELECT id,name,exam_count,grading_mode FROM subjects"
-                    allowed_parameters=()
-                    if restriction["enabled"]:
-                        allowed_query+=" WHERE id=?"
-                        allowed_parameters=(restriction["subject_id"],)
-                    allowed_query+=" ORDER BY name"
-                    allowed={row["id"]:dict(row) for row in db.execute(allowed_query,allowed_parameters)}
+                    allowed={row["id"]:dict(row) for row in db.execute(
+                        "SELECT id,name,exam_count,grading_mode FROM subjects ORDER BY name"
+                    )}
                     if len(entries)>len(allowed):raise ValueError("Quantidade de disciplinas acima do permitido.")
                     prepared=[];seen=set()
                     for entry in entries:
@@ -593,9 +574,7 @@ class Handler(SimpleHTTPRequestHandler):
                         if subject_id in seen:raise ValueError("Há disciplinas duplicadas no envio.")
                         seen.add(subject_id)
                         subject=allowed.get(subject_id)
-                        if not subject:
-                            if restriction["enabled"]:raise ValueError("O lançamento está liberado somente para a disciplina selecionada pelo administrador.")
-                            raise ValueError("A disciplina selecionada não está cadastrada.")
+                        if not subject:raise ValueError("A disciplina selecionada não está cadastrada.")
                         exam1,exam2,work,status=validate_subject_entry(subject,entry)
                         existing=db.execute(
                             "SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",
@@ -633,7 +612,6 @@ class Handler(SimpleHTTPRequestHandler):
                     "saved":saved,
                     "cleared":cleared,
                     "student_entry_enabled":True,
-                    "student_subject_restriction":restriction,
                     "entry_sheet":sheet,
                     "scores":scores,
                     "ranking":{k:own[k] for k in ("position","points","distributed","average")} if own else None,
@@ -794,17 +772,6 @@ class Handler(SimpleHTTPRequestHandler):
                     db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
                     db.commit()
                     self.output({"ok":True,"student_entry_enabled":enabled});return
-                elif self.path=="/api/admin/student-entry-restriction":
-                    enabled=data.get("enabled")
-                    if not isinstance(enabled,bool):raise ValueError("Informe se a restrição deve ficar ativa ou inativa.")
-                    subject_id=None
-                    if enabled:
-                        subject_id=int(data.get("subject_id") or 0)
-                        if not db.execute("SELECT 1 FROM subjects WHERE id=?",(subject_id,)).fetchone():raise ValueError("Selecione uma disciplina válida antes de ativar a restrição.")
-                    db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1" if enabled else "0",))
-                    db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(subject_id) if subject_id else "",))
-                    db.commit()
-                    self.output({"ok":True,"student_subject_restriction":student_subject_restriction(db)});return
                 elif self.path=="/api/admin/password":
                     password=data.get("password","")
                     if len(password)<12:raise ValueError("A senha deve possuir pelo menos 12 caracteres.")
