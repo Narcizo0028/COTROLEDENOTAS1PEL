@@ -18,7 +18,7 @@ INITIAL_PASSWORD = os.environ.get("EFAS_INITIAL_ADMIN_PASSWORD", "")
 COOKIE_SECURE = os.environ.get("EFAS_COOKIE_SECURE", "0") == "1"
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 PUBLIC_FILES = {
-    "/index.html", "/portal.html", "/admin.html", "/styles.css", "/script.js", "/admin.js",
+    "/index.html", "/portal.html", "/admin.html", "/painel.html", "/styles.css", "/script.js", "/admin.js",
     "/assets/escudo-efas.png",
 }
 
@@ -535,6 +535,7 @@ class Handler(SimpleHTTPRequestHandler):
         # O portal possui um arquivo dedicado para impedir que um index.html
         # enviado incorretamente exponha outro arquivo na página inicial.
         if path in ("/","/index.html"): self.path="/portal.html"
+        elif path=="/admin.html": self.path="/painel.html"
         elif path not in PUBLIC_FILES:
             self.send_error(404, "Arquivo não encontrado")
             return
