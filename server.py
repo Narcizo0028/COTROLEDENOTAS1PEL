@@ -18,7 +18,7 @@ INITIAL_PASSWORD = os.environ.get("EFAS_INITIAL_ADMIN_PASSWORD", "")
 COOKIE_SECURE = os.environ.get("EFAS_COOKIE_SECURE", "0") == "1"
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 PUBLIC_FILES = {
-    "/index.html", "/admin.html", "/styles.css", "/script.js", "/admin.js",
+    "/index.html", "/portal.html", "/admin.html", "/styles.css", "/script.js", "/admin.js",
     "/assets/escudo-efas.png",
 }
 
@@ -532,7 +532,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_admin():return
             with connect() as db:raw=notes_report_pdf(db)
             self.output_pdf(raw,f"relatorio-notas-{datetime.now().strftime('%Y-%m-%d')}.pdf");return
-        if path=="/": self.path="/index.html"
+        # O portal possui um arquivo dedicado para impedir que um index.html
+        # enviado incorretamente exponha outro arquivo na página inicial.
+        if path in ("/","/index.html"): self.path="/portal.html"
         elif path not in PUBLIC_FILES:
             self.send_error(404, "Arquivo não encontrado")
             return
