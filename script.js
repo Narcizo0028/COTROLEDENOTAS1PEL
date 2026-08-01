@@ -1,7 +1,7 @@
 let exams=[];
 let studentSession=null;
 let studentEntrySheet=[];
-const VIEW_IDS=new Set(['calendario','boletim','lancamento','ranking','senha']);
+const VIEW_IDS=new Set(['calendario','boletim','lancamento','senha']);
 const DEFAULT_VIEW='boletim';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -15,7 +15,6 @@ const studentEntryPanel=document.querySelector('#student-entry-panel');
 const studentEntryForm=document.querySelector('#student-entry-form');
 const studentEntryTable=document.querySelector('#student-entry-table');
 const studentEntryMessage=document.querySelector('#student-entry-message');
-const studentRankingList=document.querySelector('#student-ranking-list');
 const studentEntrySubject=document.querySelector('#student-entry-subject');
 const studentPasswordPanel=document.querySelector('#student-password-panel');
 const studentPasswordForm=document.querySelector('#student-password-form');
@@ -69,7 +68,7 @@ function syncStudentUi(){
   }
 }
 
-const STUDENT_VIEWS=new Set(['boletim','lancamento','ranking','senha']);
+const STUDENT_VIEWS=new Set(['boletim','lancamento','senha']);
 
 function showView(id,{updateHash=true}={}){
   const viewId=VIEW_IDS.has(id)?id:DEFAULT_VIEW;
@@ -258,18 +257,6 @@ function renderReport(student){
   reportCard.hidden=false;
 }
 
-function renderStudentRanking(items=[]){
-  if(!studentRankingList)return;
-  studentRankingList.innerHTML=items.length?`<div class="table-wrap student-ranking-desktop"><table class="grade-table student-ranking-table">
-    <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th></tr></thead>
-    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmt(item.average)}</td></tr>`).join('')}</tbody>
-  </table></div><div class="student-ranking-mobile">${items.map(item=>`<article class="ranking-mobile-card">
-    <div class="ranking-mobile-position"><span>Colocação</span><strong>${item.position}º</strong></div>
-    <div class="ranking-mobile-identity"><span>Discente</span><strong class="ranking-student-name" aria-label="Identidade protegida">████████████</strong></div>
-    <dl><div><dt>Pontos obtidos</dt><dd>${fmt(item.points)}</dd></div><div><dt>Pontos distribuídos</dt><dd>${fmt(item.distributed)}</dd></div><div><dt>Média</dt><dd>${fmt(item.average)}</dd></div></dl>
-  </article>`).join('')}</div>`:'<p class="empty-state">Nenhum discente disponível no ranking.</p>';
-}
-
 function fieldValue(row,key){
   const value=row[key];
   return value==null||value===''?'':String(value);
@@ -290,9 +277,6 @@ function entryFieldMarkup(row,field){
 
 function renderEntrySheet(sheet){
   studentEntrySheet=Array.isArray(sheet)?sheet:[];
-  const restrictionNotice=document.querySelector('#student-subject-restriction-notice');
-  const restriction=studentSession?.student_subject_restriction;
-  if(restrictionNotice){restrictionNotice.hidden=!restriction?.enabled;restrictionNotice.textContent=restriction?.enabled?`Lançamento liberado somente para esta disciplina: ${restriction.subject_name}`:'Lançamento liberado somente para esta disciplina';}
   if(!sheet?.length){
     studentEntryPanel.hidden=true;
     studentEntryTable.innerHTML='';
@@ -368,7 +352,6 @@ function renderEntrySheet(sheet){
 
 studentEntrySubject.addEventListener('change',()=>{
   studentEntryMessage.textContent='';
-  if(studentRankingList)studentRankingList.innerHTML='';
   renderEntrySheet(studentEntrySheet);
 });
 
@@ -437,11 +420,8 @@ studentEntryForm.addEventListener('submit',async e=>{
     if(studentSession){
       studentSession.scores=data.scores||[];
       studentSession.entry_sheet=data.entry_sheet||[];
-      if(data.student_subject_restriction)studentSession.student_subject_restriction=data.student_subject_restriction;
       if(data.ranking)studentSession.ranking=data.ranking;
-      if(data.ranking_list)studentSession.ranking_list=data.ranking_list;
       renderReport(studentSession);
-      renderStudentRanking(studentSession.ranking_list||[]);
     }
     renderEntrySheet(data.entry_sheet);
     studentEntryMessage.classList.remove('is-error');
@@ -473,7 +453,6 @@ document.querySelector('#grade-form').addEventListener('submit',async e=>{
     studentSession=student;
     message.textContent='';
     renderReport(student);
-    renderStudentRanking(student.ranking_list||[]);
     renderEntrySheet(student.entry_sheet||[]);
     studentEntryMessage.textContent='';
     syncStudentUi();

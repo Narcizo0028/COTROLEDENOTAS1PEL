@@ -5,23 +5,11 @@ Portal institucional responsivo da EFAS para calendário, consulta individual de
 ## Estrutura do projeto
 
 - `index.html`, `styles.css` e `script.js`: portal dos discentes.
-- `admin.html`, `admin.js` e `admin-dashboard.js`: estrutura, funções existentes e componentes reutilizáveis do painel administrativo.
+- `admin.html` e `admin.js`: painel administrativo.
 - `server.py`: servidor, autenticação, API e regras de negócio.
 - `assets/escudo-efas.png`: escudo institucional usado no cabeçalho, destaque e rodapé.
 - `data/notas.db`: banco local criado na primeira execução. Este arquivo é confidencial e está excluído do Git.
 - `.env.example`: modelo das configurações exigidas no servidor.
-
-## Painel administrativo reorganizado
-
-O painel utiliza navegação lateral recolhível e reúne as funções reais do sistema em dez áreas: visão geral, discentes, disciplinas, lançamento de notas, autorizações, calendário, ranking, relatórios, importações e configurações. Em celulares e tablets, o menu é aberto pelo botão de menu e as tabelas passam a usar cartões ou rolagem horizontal controlada.
-
-A pesquisa global localiza discentes, matrículas, disciplinas e avaliações. Tabelas administrativas possuem pesquisa, filtros, ordenação, paginação e exportação CSV quando aplicável. As autorizações de lançamento pelo discente, prazos, importações e alterações continuam persistidas pelo servidor no banco SQLite existente.
-
-As importações de calendário e notas sempre exigem prévia e confirmação. Alterações de notas existentes, bloqueio e revogação de autorizações também solicitam confirmação explícita antes de gravar.
-
-A organização final do menu é: Visão geral, Discentes, Disciplinas, Lançamento de notas, Calendário de avaliações, Ranking, Relatórios, Configurações e Sair. A importação de notas e as autorizações ficam dentro de Lançamento de notas; a importação do calendário fica dentro de Calendário de avaliações. As telas Discentes e Disciplinas exibem somente seus formulários de cadastro.
-
-O ranking é recalculado a partir do banco sempre que os dados são carregados e pode ser atualizado manualmente. A classificação utiliza `percentual = (pontos obtidos / pontos distribuídos) × 100`, com proteção para pontuação distribuída igual a zero.
 
 ## Execução local
 

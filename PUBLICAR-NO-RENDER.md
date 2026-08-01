@@ -13,14 +13,10 @@ O banco existente permanece no caminho:
 ## Etapa 1 - atualizar o repositório
 
 1. Abra o repositório GitHub que já está conectado ao serviço Render.
-2. Extraia o arquivo ZIP no computador antes de abrir o GitHub. O GitHub não extrai um ZIP enviado ao repositório.
-3. Na raiz do repositório, envie e substitua estes arquivos: `.python-version`, `server.py`, `requirements.txt`, `render.yaml`, `README.md` e `PUBLICAR-NO-RENDER.md`.
-4. Confira que `server.py` ficou na raiz, no mesmo nível de `requirements.txt`. Não coloque os arquivos dentro de uma nova subpasta.
-5. Mantenha a pasta `data` sem arquivo `notas.db`.
-6. Não envie senhas, arquivos `.env` ou bancos `.db`.
-7. Confirme as alterações no GitHub e aguarde a criação do novo commit.
-
-Importante: não envie somente o arquivo ZIP ao GitHub. O Render ignora o conteúdo interno do ZIP e continuará executando a versão anterior.
+2. Substitua os arquivos da aplicação pelo conteúdo desta pasta.
+3. Mantenha a pasta `data` sem arquivo `notas.db`.
+4. Não envie senhas, arquivos `.env` ou bancos `.db`.
+5. Confirme as alterações no GitHub.
 
 ## Etapa 2 - conferir o serviço existente
 
@@ -45,8 +41,7 @@ Não altere `EFAS_INITIAL_ADMIN_PASSWORD` se o administrador já foi cadastrado.
 3. Aguarde a mensagem **Deploy live**.
 4. Acesse `https://controle-notas-1-pelotao.onrender.com/`.
 5. Atualize o navegador com `Ctrl + F5`.
-6. Abra `https://controle-notas-1-pelotao.onrender.com/api/version` e confira a versão `2026-08-01-restauracao-render-verificada-v4`.
-7. Entre no painel e confira um discente, uma nota já lançada e o calendário.
+6. Entre no painel e confira um discente, uma nota já lançada e o calendário.
 
 ## O que não fazer
 
