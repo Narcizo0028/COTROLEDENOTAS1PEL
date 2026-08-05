@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-import base64, binascii, difflib, hashlib, hmac, io, json, os, re, secrets, sqlite3, time, unicodedata
+import base64, binascii, difflib, hashlib, hmac, io, json, math, os, re, secrets, sqlite3, time, unicodedata
 
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "notas.db"
@@ -182,6 +182,35 @@ def is_defesa_pessoal(subject):
             name = subject["subject"]
     name = unicodedata.normalize("NFKD", str(name or "")).encode("ascii", "ignore").decode().casefold()
     return "defesa pessoal" in name
+
+def converter_numero(valor):
+    if isinstance(valor, (int, float)):
+        number = float(valor)
+        return 0.0 if math.isnan(number) or math.isinf(number) else number
+    texto = str(valor or "0").strip()
+    if not texto:
+        return 0.0
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    try:
+        number = float(texto)
+    except ValueError:
+        return 0.0
+    return 0.0 if math.isnan(number) or math.isinf(number) else number
+
+def calcular_media(pontos_obtidos, pontos_distribuidos):
+    obtidos = converter_numero(pontos_obtidos)
+    distribuidos = converter_numero(pontos_distribuidos)
+    if distribuidos <= 0:
+        return 0.0
+    media = min((obtidos / distribuidos) * 10, 10.0)
+    return math.floor(media * 100) / 100
+
+def formatar_media(valor):
+    numero = math.floor(converter_numero(valor) * 100) / 100
+    inteiro = int(numero)
+    centavos = int((numero - inteiro) * 100 + 1e-9)
+    return f"{inteiro},{centavos:02d}"
 
 def parse_grade_value(value, maximum, label, blank_as_zero=True):
     # Para lançamento manual, campo em branco representa a mesma nota que zero.
@@ -469,7 +498,7 @@ def ranking(db):
     result=[]; last=None; position=0
     for index,row in enumerate(rows,1):
         if last is None or row["points"]<last: position=index
-        last=row["points"]; item=dict(row); item["position"]=position; item["average"]=round(row["points"]/row["subjects_count"],2) if row["subjects_count"] else 0; result.append(item)
+        last=row["points"]; item=dict(row); item["position"]=position; item["average"]=calcular_media(row["points"], row["distributed"]); result.append(item)
     return result
 
 def student_ranking_view(rows):
@@ -511,12 +540,12 @@ def notes_report_pdf(db):
         table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#8a6b25')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(3,1),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#c9c2b2')),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f5f2e9')]),('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),3)]));story.append(table)
     else:story.append(Paragraph('Nenhum lançamento de nota foi encontrado.',styles['Normal']))
     distributed_rows=sorted(ranking(db),key=lambda item:str(item['name']).casefold())
-    story.append(Paragraph('Pontos distribuídos por discente',section_title))
+    story.append(Paragraph('Resumo por discente',section_title))
     if distributed_rows:
-        distributed_data=[[Paragraph('Discente',head),Paragraph('Matrícula',head),Paragraph('Pontos distribuídos',head)]]
+        distributed_data=[[Paragraph('Discente',head),Paragraph('Matrícula',head),Paragraph('Pontos obtidos',head),Paragraph('Pontos distribuídos',head),Paragraph('Média',head)]]
         for item in distributed_rows:
-            distributed_data.append([Paragraph(str(item['name']),cell),Paragraph(str(item['id']),cell),Paragraph(fmt(item['distributed']),cell)])
-        distributed_table=Table(distributed_data,colWidths=[90*mm,35*mm,42*mm],repeatRows=1,hAlign='LEFT')
+            distributed_data.append([Paragraph(str(item['name']),cell),Paragraph(str(item['id']),cell),Paragraph(fmt(item['points']),cell),Paragraph(fmt(item['distributed']),cell),Paragraph(formatar_media(calcular_media(item['points'],item['distributed'])),cell)])
+        distributed_table=Table(distributed_data,colWidths=[68*mm,28*mm,28*mm,28*mm,20*mm],repeatRows=1,hAlign='LEFT')
         distributed_table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#8a6b25')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,1),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#c9c2b2')),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f5f2e9')]),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
         story.append(distributed_table)
     else:story.append(Paragraph('Nenhum discente cadastrado.',styles['Normal']))
