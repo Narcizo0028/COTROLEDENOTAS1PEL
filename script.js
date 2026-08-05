@@ -1,489 +1,134 @@
-let exams=[];
-let studentSession=null;
-let studentEntrySheet=[];
-const VIEW_IDS=new Set(['calendario','boletim','lancamento','ranking','senha']);
-const DEFAULT_VIEW='boletim';
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-const menuButton=document.querySelector('.menu-toggle');
-const menu=document.querySelector('.main-nav');
-const navBackdrop=document.querySelector('#nav-backdrop');
-const examList=document.querySelector('#exam-list');
-const filter=document.querySelector('#discipline-filter');
-const reportCard=document.querySelector('#report-card');
-const studentEntryPanel=document.querySelector('#student-entry-panel');
-const studentEntryForm=document.querySelector('#student-entry-form');
-const studentEntryTable=document.querySelector('#student-entry-table');
-const studentEntryMessage=document.querySelector('#student-entry-message');
-const studentRankingList=document.querySelector('#student-ranking-list');
-const studentEntrySubject=document.querySelector('#student-entry-subject');
-const studentPasswordPanel=document.querySelector('#student-password-panel');
-const studentPasswordForm=document.querySelector('#student-password-form');
-const newPassword=document.querySelector('#student-new-password');
-const confirmPassword=document.querySelector('#student-confirm-password');
-const matchIndicator=document.querySelector('#password-match-indicator');
-const passwordSubmit=document.querySelector('#student-password-submit');
-const showPasswords=document.querySelector('#show-student-passwords');
-const gradesGuests=[...document.querySelectorAll('.grades-guest')];
-const gradesAutheds=[...document.querySelectorAll('.grades-authed')];
-const lancamentoEmpty=document.querySelector('#lancamento-empty');
-const studentLogoutButton=document.querySelector('#student-logout-button');
-const views=[...document.querySelectorAll('[data-view]')];
+# Controle de Notas — CFS / 1º Pelotão
 
-function closeMenu(){
-  menu.classList.remove('open');
-  menuButton.setAttribute('aria-expanded','false');
-  menuButton.setAttribute('aria-label','Abrir menu');
-  document.body.classList.remove('nav-open');
-  if(navBackdrop)navBackdrop.hidden=true;
+Portal institucional responsivo da EFAS para calendário, consulta individual de notas e administração restrita. A interface usa HTML5, CSS3 e JavaScript puro; o backend usa apenas a biblioteca padrão do Python e SQLite.
+
+## Estrutura do projeto
+
+- `index.html`, `styles.css` e `script.js`: portal dos discentes.
+- `admin.html` e `admin.js`: painel administrativo.
+- `server.py`: servidor, autenticação, API e regras de negócio.
+- `assets/escudo-efas.png`: escudo institucional usado no cabeçalho, destaque e rodapé.
+- `data/notas.db`: banco local criado na primeira execução. Este arquivo é confidencial e está excluído do Git.
+- `.env.example`: modelo das configurações exigidas no servidor.
+
+## Execução local
+
+Requer Python 3.10 ou superior. Na primeira execução, defina uma senha administrativa temporária com pelo menos 12 caracteres.
+
+### Windows PowerShell
+
+```powershell
+$env:EFAS_INITIAL_ADMIN_PASSWORD="defina-uma-senha-forte"
+python server.py
+```
+
+Abra `http://127.0.0.1:4174/`. O usuário inicial é `administrador`. O sistema exigirá a troca da senha no primeiro acesso.
+
+Nas execuções seguintes, o banco já contém o administrador e a variável da senha inicial não é necessária.
+
+## Regras acadêmicas
+
+- Disciplinas com uma avaliação: AVF de 7 pontos e trabalho de 3 pontos; o campo AVC permanece bloqueado.
+- Disciplinas com duas avaliações: AVC de 3 pontos, AVF de 4 pontos e trabalho de 3 pontos.
+- Saúde Integral, Armamento e Tiro Policial e APMI: resultado `Apto` ou `Inapto`, fora da pontuação numérica do ranking.
+- Educação Física Militar: 1º TAF de 3 pontos, 2º TAF de 3 pontos e 3º TAF de 4 pontos.
+
+O ranking completo é exclusivo do administrador. Cada discente recebe somente sua própria colocação, notas e observação individual.
+
+Após consultar o boletim pela primeira vez, o discente pode substituir a senha temporária fornecida pela administração. A troca exige uma sessão autenticada, confirmação da nova senha e no mínimo 8 caracteres. A opção permanece disponível no boletim para mudanças futuras; as senhas continuam armazenadas somente como hash PBKDF2 com salt.
+
+O painel administrativo também permite gerar um relatório PDF protegido com os nomes dos discentes, matrículas, disciplinas, componentes lançados, totais, data de geração e paginação. O arquivo é destinado à conferência posterior e só pode ser baixado durante uma sessão administrativa válida.
+
+O calendário pode ser atualizado pelo administrador por meio da importação do PDF oficial da EFAS. O sistema aceita arquivos de até 5 MB, valida o conteúdo, identifica disciplinas, datas, horários, duração e marcações V.F/V.C e somente então substitui o calendário. Arquivos inválidos ou parcialmente reconhecidos são recusados sem modificar os dados existentes.
+
+## Controle de versão
+
+O repositório mantém somente código e arquivos públicos. Banco de dados, senhas, logs e arquivos temporários são ignorados pelo `.gitignore`.
+
+Fluxo recomendado para registrar uma versão revisada:
+
+```powershell
+git status
+git add .
+git diff --cached
+git commit -m "Prepara portal EFAS para publicação"
+```
+
+Antes de enviar para um repositório remoto, confirme que `data/notas.db` e `.env` não aparecem em `git status`.
+
+## Procedimento de publicação
+
+Este projeto possui autenticação e banco SQLite; por isso, **não deve ser publicado apenas como site estático** no GitHub Pages. Use um servidor Python persistente (servidor institucional, VPS ou plataforma que preserve o disco) atrás de HTTPS.
+
+1. Faça uma cópia de segurança do banco `data/notas.db` em local protegido.
+2. Envie ao servidor apenas os arquivos versionados do repositório.
+3. Instale Python 3.10 ou superior.
+4. Configure as variáveis de ambiente, usando `.env.example` como referência:
+   - `EFAS_HOST=0.0.0.0`
+   - `EFAS_PORT=4174`
+   - `EFAS_ADMIN_USER=administrador`
+   - `EFAS_INITIAL_ADMIN_PASSWORD`: senha temporária forte, necessária somente ao criar um banco novo.
+   - `EFAS_COOKIE_SECURE=1`: obrigatório quando o endereço público usa HTTPS.
+5. Inicie `python server.py` por um gerenciador de serviços do sistema para reinício automático.
+6. Coloque Nginx, Apache ou o proxy institucional à frente da porta 4174, com certificado HTTPS válido. Não exponha a porta diretamente à internet.
+7. Acesse o painel, altere a senha temporária e teste uma consulta de discente.
+8. Configure backup criptografado e periódico de `data/notas.db`, com acesso restrito.
+
+Exemplo mínimo de proxy Nginx:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:4174;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
 }
+```
 
-function openMenu(){
-  menu.classList.add('open');
-  menuButton.setAttribute('aria-expanded','true');
-  menuButton.setAttribute('aria-label','Fechar menu');
-  document.body.classList.add('nav-open');
-  if(navBackdrop)navBackdrop.hidden=false;
-}
+## Formas de lançamento de notas
 
-function setMenuOpen(open){
-  if(open)openMenu();
-  else closeMenu();
-}
+No painel do administrador, a seção **Como deseja lançar as notas?** oferece três modos:
 
-menuButton.addEventListener('click',()=>setMenuOpen(!menu.classList.contains('open')));
-if(navBackdrop)navBackdrop.addEventListener('click',closeMenu);
-document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&menu.classList.contains('open'))closeMenu();
-});
+- **Por matéria individual:** mantém a disciplina selecionada depois de salvar, facilitando o lançamento para o próximo discente.
+- **Por discente:** mantém o discente selecionado depois de salvar, facilitando o preenchimento das demais disciplinas.
+- **Coletivo por matéria:** exibe todos os discentes em uma tabela e salva os resultados preenchidos de uma só vez.
 
-function syncStudentUi(){
-  const loggedIn=Boolean(studentSession);
-  gradesGuests.forEach(el=>{el.hidden=loggedIn;});
-  gradesAutheds.forEach(el=>{el.hidden=!loggedIn;});
-  if(studentLogoutButton)studentLogoutButton.hidden=!loggedIn;
-  document.body.classList.toggle('student-logged-in',loggedIn);
-  if(lancamentoEmpty&&studentEntryPanel){
-    const hasSheet=loggedIn&&!studentEntryPanel.hidden;
-    lancamentoEmpty.hidden=hasSheet||!loggedIn;
-  }
-}
+Os lançamentos são incrementais: campos deixados em branco preservam as notas já cadastradas. Ao selecionar novamente o mesmo discente e a mesma disciplina, os valores existentes são carregados para conferência e somente os componentes efetivamente alterados são atualizados.
 
-const STUDENT_VIEWS=new Set(['boletim','lancamento','ranking','senha']);
+### Importar notas de um discente por PDF
 
-function showView(id,{updateHash=true}={}){
-  const viewId=VIEW_IDS.has(id)?id:DEFAULT_VIEW;
-  views.forEach(view=>{
-    const active=view.dataset.view===viewId;
-    view.classList.toggle('is-active',active);
-    view.hidden=!active;
-  });
-  menu.querySelectorAll('[data-nav]').forEach(link=>{
-    link.classList.toggle('active',link.dataset.nav===viewId);
-  });
-  if(STUDENT_VIEWS.has(viewId))syncStudentUi();
-  closeMenu();
-  window.scrollTo({top:0,behavior:'auto'});
-  if(updateHash){
-    const nextHash=`#${viewId}`;
-    if(location.hash!==nextHash)history.replaceState(null,'',nextHash);
-  }
-}
+Na seção **Anexar notas de um discente por PDF**:
 
-function viewFromHash(){
-  const raw=(location.hash||`#${DEFAULT_VIEW}`).slice(1);
-  const mapped=raw==='notas'||raw==='inicio'?DEFAULT_VIEW:raw;
-  return VIEW_IDS.has(mapped)?mapped:DEFAULT_VIEW;
-}
+1. Selecione o discente.
+2. Anexe um PDF de até 5 MB e 20 páginas.
+3. Clique em **Ler PDF e conferir notas**.
+4. Confira a prévia, corrija valores se necessário e desmarque matérias que não devem ser importadas.
+5. Clique em **Confirmar e salvar notas**.
 
-document.addEventListener('click',e=>{
-  const link=e.target.closest('a');
-  if(!link)return;
-  // Administração e links externos: fecha o menu e deixa o navegador seguir.
-  if(link.classList.contains('nav-admin')||link.getAttribute('href')==='admin.html'){
-    closeMenu();
-    return;
-  }
-  const id=link.dataset.nav;
-  if(!id||!VIEW_IDS.has(id))return;
-  e.preventDefault();
-  showView(id);
-});
+O PDF deve possuir texto selecionável, preferencialmente em tabela com as colunas **Disciplina**, **AVC**, **AVF**, **Trabalho** e **Resultado**. PDFs formados somente por fotografias ou digitalizações sem camada de texto precisam passar por OCR antes da importação. Nenhuma nota é gravada durante a leitura da prévia, e campos ausentes preservam os lançamentos anteriores.
 
-window.addEventListener('hashchange',()=>showView(viewFromHash(),{updateHash:false}));
+O leitor também aceita o relatório administrativo completo, com vários discentes. Nesse caso, utiliza a coluna **Matrícula** para importar exclusivamente as linhas do discente selecionado. A gravação somente é liberada depois da prévia e da validação dos limites de cada componente.
 
-function dateParts(iso){
-  const d=new Date(`${iso}T12:00:00`);
-  return{day:String(d.getDate()).padStart(2,'0'),month:d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','')};
-}
+No boletim, o botão **Sair do boletim** encerra a sessão individual, oculta as notas e remove o código digitado. Recomenda-se sempre utilizá-lo em computadores compartilhados.
 
-function renderExams(subject='todas'){
-  const items=subject==='todas'?exams:exams.filter(x=>x.subject===subject);
-  examList.innerHTML=items.length?items.map(x=>{
-    const d=dateParts(x.date);
-    return`<article class="exam-card"><div class="exam-date"><strong>${d.day}</strong><span>${d.month}</span></div><div class="exam-details"><h3>${esc(x.subject)}</h3><p>${esc(x.time)} • ${esc(x.place)}</p></div><span class="exam-type">${esc(x.type)}</span></article>`;
-  }).join(''):'<p class="empty-state">Nenhuma prova cadastrada.</p>';
-}
+No **Ranking completo do pelotão**, o administrador pode clicar no nome de qualquer discente para consultar as matérias que já possuem lançamento, as notas de cada componente, o total, a colocação e a média.
 
-async function loadExams(){
-  try{
-    exams=await(await fetch('/api/exams')).json();
-    filter.innerHTML='<option value="todas">Todas</option>';
-    [...new Set(exams.map(x=>x.subject))].sort().forEach(s=>{
-      const o=document.createElement('option');
-      o.value=o.textContent=s;
-      filter.append(o);
-    });
-    renderExams();
-  }catch{
-    examList.innerHTML='<p class="empty-state">Inicie o servidor para carregar o calendário.</p>';
-  }
-}
-filter.addEventListener('change',e=>renderExams(e.target.value));
-loadExams();
+## Checklist antes de publicar
 
-document.querySelector('#toggle-password').addEventListener('click',e=>{
-  const input=document.querySelector('#access-code');
-  const show=input.type==='password';
-  input.type=show?'text':'password';
-  e.currentTarget.textContent=show?'Ocultar':'Mostrar';
-});
+- Revisar nome, e-mail e contatos institucionais em `index.html`.
+- Confirmar autorização de uso do escudo em `assets/escudo-efas.png`.
+- Testar login, troca de senha, cadastro, lançamento, calendário e consulta individual.
+- Confirmar que `/data/notas.db`, `/server.py`, `/.git/` e `/.env` retornam erro 404.
+- Usar HTTPS e `EFAS_COOKIE_SECURE=1`.
+- Restringir o acesso administrativo conforme a política da instituição.
+- Definir rotina de backup e observar as obrigações da LGPD.
 
-function updatePasswordMatch(){
-  const password=newPassword.value,confirmation=confirmPassword.value;
-  let state='empty',text='Confirme a senha.',symbol='•';
-  if(password&&password.length<8){state='different';text='Mínimo de 8 caracteres.';symbol='!';}
-  else if(confirmation&&password===confirmation){state='identical';text='Senhas iguais.';symbol='✓';}
-  else if(confirmation){state='different';text='Senhas diferentes.';symbol='×';}
-  matchIndicator.dataset.state=state;
-  matchIndicator.innerHTML=`<span aria-hidden="true">${symbol}</span> ${text}`;
-  passwordSubmit.disabled=state!=='identical';
-}
-newPassword.addEventListener('input',updatePasswordMatch);
-confirmPassword.addEventListener('input',updatePasswordMatch);
-showPasswords.addEventListener('change',()=>{
-  const type=showPasswords.checked?'text':'password';
-  newPassword.type=confirmPassword.type=type;
-});
+## Edição visual
 
-studentPasswordForm.addEventListener('submit',async e=>{
-  e.preventDefault();
-  const message=studentPasswordForm.querySelector('.form-message');
-  const password=newPassword.value,confirmation=confirmPassword.value;
-  if(password!==confirmation){updatePasswordMatch();return;}
-  try{
-    const response=await fetch('/api/student/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password,confirmation})});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||'Não foi possível alterar a senha.');
-    message.textContent='Senha alterada com sucesso.';
-    studentPasswordForm.reset();
-    showPasswords.checked=false;
-    newPassword.type=confirmPassword.type='password';
-    updatePasswordMatch();
-  }catch(error){
-    message.textContent=error.message;
-  }
-});
+- Textos e contatos: `index.html`.
+- Cores e responsividade: variáveis e media queries em `styles.css`.
+- Comportamento do portal: `script.js`.
+- Comportamento administrativo: `admin.js`.
+- Escudo: substitua `assets/escudo-efas.png`, mantendo o nome e preferencialmente as proporções.
 
-function scoreCell(apt,value){
-  if(apt)return'—';
-  return value==null?'—':fmt(value);
-}
-
-function renderReport(student){
-  const r=student.ranking;
-  const rows=student.scores.length?student.scores.map(x=>{
-    const total=(x.exam1||0)+(x.exam2||0)+(x.work||0);
-    const apt=x.grading_mode==='apt';
-    const totalLabel=apt?esc(x.status||'—'):fmt(total);
-    return{
-      subject:x.subject,
-      meta:`${x.hours} h/a${x.grading_mode==='taf'?' • TAF':''}`,
-      exam1:scoreCell(apt,x.exam1),
-      exam2:scoreCell(apt,x.exam2),
-      work:scoreCell(apt,x.work),
-      total:totalLabel,
-    };
-  }):null;
-
-  reportCard.innerHTML=`
-    <div class="report-header">
-      <div>
-        <h3>${esc(student.name)}</h3>
-        <p>${esc(student.rank)} • Matrícula ${esc(student.id)}</p>
-      </div>
-      <div class="ranking-summary">
-        <div><span>Colocação</span><strong>${r.position}º</strong></div>
-        <div><span>Pontos</span><strong>${fmt(r.points)} / ${fmt(r.distributed)}</strong></div>
-        <div><span>Média</span><strong>${fmt(r.average)}</strong></div>
-      </div>
-    </div>
-    ${student.observation?`<div class="student-observation"><strong>Observação da administração</strong><p>${esc(student.observation)}</p></div>`:''}
-    <div class="table-wrap report-table-desktop">
-      <table class="grade-table">
-        <thead>
-          <tr>
-            <th>Disciplina</th>
-            <th>Prova 1 / TAF 1</th>
-            <th>Prova 2 / TAF 2</th>
-            <th>Trabalho / TAF 3</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows?rows.map(x=>`<tr>
-              <td>${esc(x.subject)}<small class="table-sub">${esc(x.meta)}</small></td>
-              <td>${x.exam1}</td>
-              <td>${x.exam2}</td>
-              <td>${x.work}</td>
-              <td><strong>${x.total}</strong></td>
-            </tr>`).join(''):'<tr><td colspan="5">Nenhuma nota lançada ainda. Use o formulário abaixo para inserir.</td></tr>'}
-        </tbody>
-      </table>
-    </div>
-    <div class="report-cards-mobile" aria-label="Boletim por disciplina">
-      ${rows?rows.map(x=>`<article class="score-card">
-          <header>
-            <h4>${esc(x.subject)}</h4>
-            <small>${esc(x.meta)}</small>
-          </header>
-          <dl>
-            <div><dt>Prova 1 / TAF 1</dt><dd>${x.exam1}</dd></div>
-            <div><dt>Prova 2 / TAF 2</dt><dd>${x.exam2}</dd></div>
-            <div><dt>Trabalho / TAF 3</dt><dd>${x.work}</dd></div>
-            <div class="score-card-total"><dt>Total</dt><dd>${x.total}</dd></div>
-          </dl>
-        </article>`).join(''):'<p class="empty-state">Nenhuma nota lançada ainda. Use o formulário abaixo para inserir.</p>'}
-    </div>`;
-  reportCard.hidden=false;
-}
-
-function renderStudentRanking(items=[]){
-  if(!studentRankingList)return;
-  studentRankingList.innerHTML=items.length?`<div class="table-wrap student-ranking-desktop"><table class="grade-table student-ranking-table">
-    <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th></tr></thead>
-    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmt(item.average)}</td></tr>`).join('')}</tbody>
-  </table></div><div class="student-ranking-mobile">${items.map(item=>`<article class="ranking-mobile-card">
-    <div class="ranking-mobile-position"><span>Colocação</span><strong>${item.position}º</strong></div>
-    <div class="ranking-mobile-identity"><span>Discente</span><strong class="ranking-student-name" aria-label="Identidade protegida">████████████</strong></div>
-    <dl><div><dt>Pontos obtidos</dt><dd>${fmt(item.points)}</dd></div><div><dt>Pontos distribuídos</dt><dd>${fmt(item.distributed)}</dd></div><div><dt>Média</dt><dd>${fmt(item.average)}</dd></div></dl>
-  </article>`).join('')}</div>`:'<p class="empty-state">Nenhum discente disponível no ranking.</p>';
-}
-
-function fieldValue(row,key){
-  const value=row[key];
-  return value==null||value===''?'':String(value);
-}
-
-function entryFieldMarkup(row,field){
-  if(field.type==='status')return`<label class="entry-field">
-    <span>${esc(field.label)}</span>
-    <select data-subject-id="${row.subject_id}" data-field="status" aria-label="${esc(field.label)} de ${esc(row.subject)}">
-      <option value="">Selecione</option><option${row.status==='Apto'?' selected':''}>Apto</option><option${row.status==='Inapto'?' selected':''}>Inapto</option>
-    </select>
-  </label>`;
-  return`<label class="entry-field">
-    <span>${esc(field.label)} <small>máx. ${field.max}</small></span>
-    <input data-subject-id="${row.subject_id}" data-field="${field.key}" type="number" min="0" max="${field.max}" step="0.01" inputmode="decimal" value="${esc(fieldValue(row,field.key))}" aria-label="${esc(field.label)} de ${esc(row.subject)}">
-  </label>`;
-}
-
-function renderEntrySheet(sheet){
-  studentEntrySheet=Array.isArray(sheet)?sheet:[];
-  const restrictionNotice=document.querySelector('#student-subject-restriction-notice');
-  const restriction=studentSession?.student_subject_restriction;
-  if(restrictionNotice){restrictionNotice.hidden=!restriction?.enabled;restrictionNotice.textContent=restriction?.enabled?`Lançamento liberado somente para esta disciplina: ${restriction.subject_name}`:'Lançamento liberado somente para esta disciplina';}
-  if(!sheet?.length){
-    studentEntryPanel.hidden=true;
-    studentEntryTable.innerHTML='';
-    studentEntrySubject.innerHTML='<option value="">Selecione a disciplina</option>';
-    syncStudentUi();
-    return;
-  }
-  const selected=studentEntrySubject.value;
-  studentEntrySheet.sort((a,b)=>a.subject.localeCompare(b.subject,'pt-BR'));
-  studentEntrySubject.innerHTML='<option value="">Selecione a disciplina</option>'+studentEntrySheet.map((row,index)=>`<option value="${row.subject_id}">${index+1}. ${esc(row.subject)}</option>`).join('');
-  if(studentEntrySheet.some(row=>String(row.subject_id)===selected))studentEntrySubject.value=selected;
-  const chosen=studentEntrySubject.value;
-  studentEntryPanel.hidden=false;
-  if(!chosen){
-    studentEntryTable.innerHTML='<p class="empty-state student-entry-prompt">Escolha uma disciplina acima para preencher as notas.</p>';
-    syncStudentUi();
-    return;
-  }
-  sheet=studentEntrySheet.filter(row=>String(row.subject_id)===chosen);
-  const desktopRows=sheet.map(row=>{
-    const fields=Object.fromEntries(row.fields.map(field=>[field.key,field]));
-    const cell=key=>{
-      const field=fields[key];
-      if(!field)return'<td class="entry-empty">—</td>';
-      return`<td>${entryFieldMarkup(row,field)}</td>`;
-    };
-    const title=row.grading_mode==='taf'
-      ?`TAF <small class="table-sub">${esc(row.subject)} • 3 avaliações</small>`
-      :`${esc(row.subject)} <small class="table-sub">2 provas + trabalho</small>`;
-    if(row.grading_mode==='apt')return`<tr data-subject-id="${row.subject_id}"><td><strong>${esc(row.subject)}</strong></td><td colspan="3">${entryFieldMarkup(row,row.fields[0])}</td></tr>`;
-    return`<tr data-subject-id="${row.subject_id}">
-      <td><strong>${title}</strong></td>
-      ${cell('exam1')}
-      ${cell('exam2')}
-      ${cell('work')}
-    </tr>`;
-  }).join('');
-
-  const mobileCards=sheet.map(row=>{
-    const title=row.grading_mode==='taf'
-      ?`TAF • ${esc(row.subject)}`
-      :esc(row.subject);
-    const subtitle=row.grading_mode==='taf'?'3 avaliações':'2 provas + trabalho';
-    return`<article class="entry-card" data-subject-id="${row.subject_id}">
-      <header>
-        <h4>${title}</h4>
-        <small>${subtitle}</small>
-      </header>
-      <div class="entry-card-fields">
-        ${row.fields.map(field=>entryFieldMarkup(row,field)).join('')}
-      </div>
-    </article>`;
-  }).join('');
-
-  studentEntryTable.innerHTML=`
-    <div class="table-wrap entry-table-desktop">
-      <table class="grade-table student-entry-grid">
-        <thead>
-          <tr>
-            <th>Disciplina</th>
-            <th>Prova 1 / TAF 1</th>
-            <th>Prova 2 / TAF 2</th>
-            <th>Trabalho / TAF 3</th>
-          </tr>
-        </thead>
-        <tbody>${desktopRows}</tbody>
-      </table>
-    </div>
-    <div class="entry-cards-mobile">${mobileCards}</div>`;
-  studentEntryPanel.hidden=false;
-  syncStudentUi();
-}
-
-studentEntrySubject.addEventListener('change',()=>{
-  studentEntryMessage.textContent='';
-  if(studentRankingList)studentRankingList.innerHTML='';
-  renderEntrySheet(studentEntrySheet);
-});
-
-function collectEntryPayload(){
-  const bySubject=new Map();
-  const mobileRoot=studentEntryTable.querySelector('.entry-cards-mobile');
-  const desktopRoot=studentEntryTable.querySelector('.entry-table-desktop');
-  const useMobile=mobileRoot&&getComputedStyle(mobileRoot).display!=='none';
-  const root=useMobile?mobileRoot:(desktopRoot||studentEntryTable);
-  root.querySelectorAll('[data-subject-id][data-field]').forEach(input=>{
-    const subjectId=input.dataset.subjectId;
-    if(!bySubject.has(subjectId))bySubject.set(subjectId,{subject_id:subjectId});
-    bySubject.get(subjectId)[input.dataset.field]=input.value;
-  });
-  return[...bySubject.values()];
-}
-
-function clearStudentSessionUi(messageText=''){
-  studentSession=null;
-  reportCard.innerHTML='';
-  reportCard.hidden=true;
-  studentEntryPanel.hidden=true;
-  studentEntryTable.innerHTML='';
-  studentEntrySheet=[];
-  studentEntrySubject.innerHTML='<option value="">Selecione a disciplina</option>';
-  studentEntryMessage.textContent='';
-  studentPasswordForm.reset();
-  updatePasswordMatch();
-  document.querySelector('#access-code').value='';
-  document.querySelector('#form-message').textContent=messageText;
-  syncStudentUi();
-}
-
-studentLogoutButton.addEventListener('click',async()=>{
-  try{
-    await fetch('/api/student/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  }finally{
-    clearStudentSessionUi('Sessão encerrada com segurança.');
-    showView(DEFAULT_VIEW);
-  }
-});
-
-studentEntryForm.addEventListener('submit',async e=>{
-  e.preventDefault();
-  const button=document.querySelector('#student-entry-submit');
-  const entries=collectEntryPayload();
-  if(!entries.length){
-    studentEntryMessage.textContent='Nenhuma disciplina disponível para lançamento.';
-    return;
-  }
-  const originalLabel=button.textContent;
-  const controls=[...studentEntryForm.querySelectorAll('input,select,button')];
-  controls.forEach(control=>control.disabled=true);
-  studentEntryForm.setAttribute('aria-busy','true');
-  studentEntryPanel.classList.add('is-saving');
-  button.textContent='Salvando...';
-  studentEntryMessage.textContent='Salvando suas notas...';
-  try{
-    const response=await fetch('/api/student/scores',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({entries}),
-    });
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||'Não foi possível salvar suas notas.');
-    if(studentSession){
-      studentSession.scores=data.scores||[];
-      studentSession.entry_sheet=data.entry_sheet||[];
-      if(data.student_subject_restriction)studentSession.student_subject_restriction=data.student_subject_restriction;
-      if(data.ranking)studentSession.ranking=data.ranking;
-      if(data.ranking_list)studentSession.ranking_list=data.ranking_list;
-      renderReport(studentSession);
-      renderStudentRanking(studentSession.ranking_list||[]);
-    }
-    renderEntrySheet(data.entry_sheet);
-    studentEntryMessage.classList.remove('is-error');
-    studentEntryMessage.textContent=`Salvo (${data.saved} disciplina(s)).`;
-  }catch(error){
-    studentEntryMessage.classList.add('is-error');
-    studentEntryMessage.textContent=error.message;
-  }finally{
-    controls.forEach(control=>control.disabled=false);
-    studentEntryForm.removeAttribute('aria-busy');
-    studentEntryPanel.classList.remove('is-saving');
-    button.textContent=originalLabel;
-  }
-});
-
-document.querySelector('#grade-form').addEventListener('submit',async e=>{
-  e.preventDefault();
-  const id=document.querySelector('#student-id').value.trim();
-  const code=document.querySelector('#access-code').value;
-  const message=document.querySelector('#form-message');
-  try{
-    const response=await fetch('/api/grades',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({id,code}),
-    });
-    if(!response.ok)throw 0;
-    const student=await response.json();
-    studentSession=student;
-    message.textContent='';
-    renderReport(student);
-    renderStudentRanking(student.ranking_list||[]);
-    renderEntrySheet(student.entry_sheet||[]);
-    studentEntryMessage.textContent='';
-    syncStudentUi();
-    showView(student.must_change_password?'senha':'boletim');
-  }catch{
-    message.textContent='Matrícula ou código de acesso inválido.';
-    clearStudentSessionUi('Matrícula ou código de acesso inválido.');
-  }
-});
-
-document.querySelector('#current-year').textContent=new Date().getFullYear();
-showView(viewFromHash(),{updateHash:false});
-syncStudentUi();
+Não inclua senhas, códigos de acesso ou bancos reais em commits, capturas de tela ou chamados de suporte.
