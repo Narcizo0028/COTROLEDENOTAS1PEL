@@ -1,6 +1,7 @@
 """Servidor local EFAS: autenticação, currículo, notas, observações e ranking."""
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from http.cookies import SimpleCookie
+from html import escape as html_escape
 from pathlib import Path
 from urllib.parse import urlsplit
 from datetime import datetime, timedelta
@@ -120,12 +121,12 @@ def pdf_import_user_action(error):
     if "rota inexistente" in text:return "O site ainda não recebeu a atualização completa. Peça para publicar de novo o painel e o servidor juntos, depois atualize a página com Ctrl+F5."
     return "Confira a mensagem e os detalhes abaixo. Corrija o que for pedido e tente importar novamente."
 
-def merge_imported_score(existing, exam1, exam2, work, status, mode, exam_count):
+def merge_imported_score(existing, exam1, exam2, work, status, mode, exam_count, no_exam1=False):
     """Na importação por PDF, campos vazios preservam o lançamento já cadastrado."""
     previous=dict(existing) if existing else {}
     if mode=="apt":
         return None, None, None, status if status is not None else previous.get("status")
-    if exam_count==1 and mode=="normal":
+    if (exam_count==1 and mode=="normal") or no_exam1:
         exam1=None
     else:
         if exam1 is None:exam1=previous.get("exam1")
@@ -133,9 +134,9 @@ def merge_imported_score(existing, exam1, exam2, work, status, mode, exam_count)
     if work is None:work=previous.get("work")
     return exam1, exam2, work, None
 
-def merge_student_score(existing, exam1, exam2, work, status, mode, exam_count):
-    """No portal do discente, campos não preenchidos preservam as notas anteriores."""
-    return merge_imported_score(existing, exam1, exam2, work, status, mode, exam_count)
+def merge_student_score(existing, exam1, exam2, work, status, mode, exam_count, no_exam1=False):
+    """Combina o lançamento com dados anteriores sem reativar componentes inexistentes."""
+    return merge_imported_score(existing,exam1,exam2,work,status,mode,exam_count,no_exam1)
 
 def score_matches(row, exam1, exam2, work, status):
     """Confirma que o SQLite devolve exatamente os valores que acabaram de ser gravados."""
@@ -164,7 +165,16 @@ def assert_db_writable(db):
 
 def is_defesa_pessoal(subject):
     """Identifica a disciplina mesmo se o texto variar em acentuação."""
-    name = unicodedata.normalize("NFKD", str(subject["name"] if subject else "")).encode("ascii", "ignore").decode().casefold()
+    if not subject:
+        return False
+    if isinstance(subject, str):
+        name = subject
+    else:
+        try:
+            name = subject["name"]
+        except (KeyError, IndexError):
+            name = subject["subject"]
+    name = unicodedata.normalize("NFKD", str(name or "")).encode("ascii", "ignore").decode().casefold()
     return "defesa pessoal" in name
 
 def parse_grade_value(value, maximum, label, blank_as_zero=True):
@@ -194,12 +204,12 @@ def subject_fields(subject):
         ]
     if subject["exam_count"] == 1:
         return [
-            {"key": "exam2", "label": "Prova", "max": 7},
+            {"key": "exam2", "label": "Avaliação Final (AVF)", "max": 7},
             {"key": "work", "label": "Trabalho", "max": 3},
         ]
     return [
-        {"key": "exam1", "label": "Prova 1", "max": 3},
-        {"key": "exam2", "label": "Prova 2", "max": 4},
+        {"key": "exam1", "label": "Avaliação Complementar (AVC)", "max": 3},
+        {"key": "exam2", "label": "Avaliação Final (AVF)", "max": 4},
         {"key": "work", "label": "Trabalho", "max": 3},
     ]
 
@@ -246,13 +256,13 @@ def validate_subject_entry(subject, entry):
     if subject["exam_count"] == 1:
         return (
             None,
-            parse_grade_value(entry.get("exam2"), 7, "Prova"),
+            parse_grade_value(entry.get("exam2"), 7, "AVF"),
             parse_grade_value(entry.get("work"), 3, "Trabalho"),
             None,
         )
     return (
-        parse_grade_value(entry.get("exam1"), 3, "Prova 1"),
-        parse_grade_value(entry.get("exam2"), 4, "Prova 2"),
+        parse_grade_value(entry.get("exam1"), 3, "AVC"),
+        parse_grade_value(entry.get("exam2"), 4, "AVF"),
         parse_grade_value(entry.get("work"), 3, "Trabalho"),
         None,
     )
@@ -283,6 +293,7 @@ def initialize():
                 raise RuntimeError("Defina EFAS_INITIAL_ADMIN_PASSWORD com pelo menos 12 caracteres antes do primeiro uso.")
             salt,digest=password_hash(INITIAL_PASSWORD); db.execute("INSERT INTO admins VALUES(?,?,?,1)",(USER,salt,digest))
         db.executemany("INSERT INTO subjects(hours,name,exam_count) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET hours=excluded.hours,exam_count=excluded.exam_count",SUBJECTS)
+        db.execute("UPDATE subjects SET grading_mode='normal'")
         db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
         db.execute("UPDATE subjects SET grading_mode='taf' WHERE name='Educação Física Militar'")
         calendar_version=db.execute("SELECT value FROM settings WHERE key='official_calendar_version'").fetchone()
@@ -359,9 +370,9 @@ def parse_student_scores_pdf(raw, subjects, student_id):
 
     def component(header):
         header=normalized(header)
-        if 'avc' in header or 'avaliacao complementar' in header or '1 taf' in header:return 'exam1'
-        if 'avf' in header or 'avaliacao final' in header or '2 taf' in header:return 'exam2'
-        if 'trabalho' in header or '3 taf' in header:return 'work'
+        if 'avc' in header or 'avaliacao complementar' in header or re.search(r'\b1o?\s+taf\b',header):return 'exam1'
+        if 'avf' in header or 'avaliacao final' in header or re.search(r'\b2o?\s+taf\b',header):return 'exam2'
+        if 'trabalho' in header or re.search(r'\b3o?\s+taf\b',header):return 'work'
         if 'resultado' in header or 'situacao' in header or 'status' in header:return 'status'
         return None
 
@@ -417,8 +428,13 @@ def parse_student_scores_pdf(raw, subjects, student_id):
             entry['exam1']=entry['exam2']=entry['work']=None
             if entry['status'] not in ('Apto','Inapto'):continue
         else:
-            if subject['exam_count']==1 and mode=='normal':entry['exam1']=None
-            maxima={'exam1':3,'exam2':3 if mode=='taf' else 7 if subject['exam_count']==1 else 4,'work':4 if mode=='taf' else 3}
+            defesa=is_defesa_pessoal(subject)
+            if (subject['exam_count']==1 and mode=='normal') or defesa:entry['exam1']=None
+            maxima={
+                'exam1':3,
+                'exam2':3 if mode=='taf' else 6 if defesa else 7 if subject['exam_count']==1 else 4,
+                'work':4 if mode=='taf' or defesa else 3,
+            }
             for field,maximum in maxima.items():
                 value=entry[field]
                 if value is not None and not 0<=value<=maximum:raise ValueError(f"{entry['subject']}: valor {value:g} acima do máximo permitido para {field}.")
@@ -430,10 +446,14 @@ def parse_student_scores_pdf(raw, subjects, student_id):
 
 def ranking(db):
     rows = db.execute("""SELECT s.id,s.name,s.rank,s.observation,
-      COALESCE(SUM(CASE WHEN sub.grading_mode='apt' THEN 0 ELSE COALESCE(sc.exam1,0)+COALESCE(sc.exam2,0)+COALESCE(sc.work,0) END),0) points,
+      COALESCE(SUM(CASE
+        WHEN sub.grading_mode='apt' THEN 0
+        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN COALESCE(sc.exam2,0)+COALESCE(sc.work,0)
+        ELSE COALESCE(sc.exam1,0)+COALESCE(sc.exam2,0)+COALESCE(sc.work,0) END),0) points,
       COALESCE(SUM(
         CASE WHEN sub.grading_mode='apt' THEN 0
         WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
+        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN (CASE WHEN sc.exam2>0 THEN 6 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
         ELSE (CASE WHEN sc.exam1>0 AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work>0 THEN 3 ELSE 0 END) END
       ),0) distributed,
       COUNT(CASE WHEN sub.grading_mode!='apt' AND (sc.exam1>0 OR sc.exam2>0 OR sc.work>0) THEN 1 END) subjects_count
@@ -475,9 +495,9 @@ def notes_report_pdf(db):
     headers=['Discente','Matrícula','Disciplina','AVC / 1º TAF','AVF / 2º TAF','Trabalho / 3º TAF','Total / resultado']
     data=[[Paragraph(x,head) for x in headers]]
     for row in rows:
-        apt=row['grading_mode']=='apt';total=(row['exam1'] or 0)+(row['exam2'] or 0)+(row['work'] or 0)
+        apt=row['grading_mode']=='apt';defesa=is_defesa_pessoal(row['subject']);total=(0 if defesa else (row['exam1'] or 0))+(row['exam2'] or 0)+(row['work'] or 0)
         result=(row['status'] or '-') if apt else fmt(total)
-        values=[f"{row['name']}<br/><font size='6'>{row['rank']}</font>",row['student_id'],row['subject'],'-' if apt else fmt(row['exam1']),'-' if apt else fmt(row['exam2']),'-' if apt else fmt(row['work']),result]
+        values=[f"{html_escape(str(row['name']))}<br/><font size='6'>{html_escape(str(row['rank']))}</font>",html_escape(str(row['student_id'])),html_escape(str(row['subject'])),'-' if apt or defesa else fmt(row['exam1']),'-' if apt else fmt(row['exam2']),'-' if apt else fmt(row['work']),html_escape(str(result))]
         data.append([Paragraph(str(x),cell) for x in values])
     if rows:
         table=Table(data,colWidths=[43*mm,23*mm,72*mm,25*mm,25*mm,30*mm,28*mm],repeatRows=1,hAlign='CENTER')
@@ -498,6 +518,23 @@ def notes_report_pdf(db):
         canvas.saveState();canvas.setFont('Helvetica',7);canvas.setFillColor(colors.HexColor('#69675f'));canvas.drawString(10*mm,7*mm,'Documento administrativo - Controle de Notas CFS / 1º Pelotão');canvas.drawRightString(landscape(A4)[0]-10*mm,7*mm,f'Página {document.page}');canvas.restoreState()
     doc.build(story,onFirstPage=footer,onLaterPages=footer);return output.getvalue()
 
+def validate_deployment_files():
+    """Interrompe a inicialização se arquivos essenciais tiverem sido trocados no envio."""
+    signatures = {
+        "admin.html": "<!DOCTYPE html>",
+        "index.html": "<!DOCTYPE html>",
+        "admin.js": "const $=",
+        "script.js": "let exams=",
+        "render.yaml": "services:",
+    }
+    for filename, expected in signatures.items():
+        path = ROOT / filename
+        if not path.is_file():
+            raise RuntimeError(f"Arquivo obrigatório ausente: {filename}.")
+        beginning = path.read_text(encoding="utf-8-sig")[:200].lstrip()
+        if not beginning.startswith(expected):
+            raise RuntimeError(f"Arquivo inválido ou trocado durante a publicação: {filename} deve começar com {expected!r}.")
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*args,**kwargs): super().__init__(*args,directory=str(ROOT),**kwargs)
     def end_headers(self):
@@ -511,8 +548,10 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Expires", "0")
         super().end_headers()
     def body(self):
-        try: return json.loads(self.rfile.read(int(self.headers.get("Content-Length",0))))
-        except Exception: return {}
+        try:
+            parsed=json.loads(self.rfile.read(int(self.headers.get("Content-Length",0))))
+            return parsed if isinstance(parsed,dict) else {}
+        except Exception:return {}
     def output(self,data,status=200,cookie=None):
         raw=json.dumps(data,ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store")
         if cookie:self.send_header("Set-Cookie",cookie)
@@ -551,12 +590,16 @@ class Handler(SimpleHTTPRequestHandler):
             with connect() as db:raw=notes_report_pdf(db)
             self.output_pdf(raw,f"relatorio-notas-{datetime.now().strftime('%Y-%m-%d')}.pdf");return
         if path=="/": self.path="/index.html"
+        elif path in ("/admin","/administracao"):self.path="/admin.html"
         elif path not in PUBLIC_FILES:
             self.send_error(404, "Arquivo não encontrado")
             return
         super().do_GET()
     def do_POST(self):
-        if int(self.headers.get("Content-Length",0) or 0)>8*1024*1024:self.output({"error":"Arquivo ou solicitação acima do limite permitido."},413);return
+        try:content_length=int(self.headers.get("Content-Length",0) or 0)
+        except (TypeError,ValueError):self.output({"error":"Tamanho da solicitação inválido."},400);return
+        if content_length>8*1024*1024:self.output({"error":"Arquivo ou solicitação acima do limite permitido."},413);return
+        self.path=urlsplit(self.path).path
         data=self.body()
         if self.path=="/api/admin/login":
             with connect() as db: row=db.execute("SELECT * FROM admins WHERE username=?",(data.get("username",""),)).fetchone()
@@ -620,7 +663,7 @@ class Handler(SimpleHTTPRequestHandler):
                             (sid,subject_id),
                         ).fetchone()
                         exam1,exam2,work,status=merge_student_score(
-                            existing,exam1,exam2,work,status,subject["grading_mode"],subject["exam_count"]
+                            existing,exam1,exam2,work,status,subject["grading_mode"],subject["exam_count"],is_defesa_pessoal(subject)
                         )
                         prepared.append((sid,subject_id,exam1,exam2,work,status))
                     saved=0;cleared=0
@@ -702,7 +745,7 @@ class Handler(SimpleHTTPRequestHandler):
                         elif subject['exam_count']==1:exam1=None;exam2=imported_number(entry.get('exam2'),7,'AVF');work=imported_number(entry.get('work'),3,'Trabalho')
                         else:exam1=imported_number(entry.get('exam1'),3,'AVC');exam2=imported_number(entry.get('exam2'),4,'AVF');work=imported_number(entry.get('work'),3,'Trabalho')
                         existing=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
-                        exam1,exam2,work,status=merge_imported_score(existing,exam1,exam2,work,status,mode,subject['exam_count'])
+                        exam1,exam2,work,status=merge_imported_score(existing,exam1,exam2,work,status,mode,subject['exam_count'],is_defesa_pessoal(subject))
                         if mode!='apt' and exam1 is None and exam2 is None and work is None:
                             pdf_import_log(logs,'warning',f'{subject["name"]}: sem notas no PDF nem lançamento anterior; ignorada.')
                             continue
@@ -850,17 +893,17 @@ class Handler(SimpleHTTPRequestHandler):
                         value=float(str(value).strip().replace(",", "."))
                         if not 0<=value<=maximum:raise ValueError(f"{key} deve estar entre 0 e {maximum}.")
                         return value
-                    mode=sub[2];status=None
+                    mode=sub['grading_mode'];status=None
                     if mode=='apt':
                         status=str(data.get('status','')).strip() or None
                         if status not in (None,'Apto','Inapto'):raise ValueError('Selecione Apto ou Inapto.')
                         exam1=exam2=work=None
                     elif mode=='taf': exam1=number('exam1',3);exam2=number('exam2',3);work=number('work',4)
                     elif is_defesa_pessoal(sub): exam1=None;exam2=number("exam2",6);work=number("work",4)
-                    elif sub[1]==1: exam1=None;exam2=number("exam2",7);work=number("work",3)
+                    elif sub['exam_count']==1: exam1=None;exam2=number("exam2",7);work=number("work",3)
                     else: exam1=number("exam1",3);exam2=number("exam2",4);work=number("work",3)
                     existing=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
-                    exam1,exam2,work,status=merge_student_score(existing,exam1,exam2,work,status,mode,sub[0])
+                    exam1,exam2,work,status=merge_student_score(existing,exam1,exam2,work,status,mode,sub['exam_count'],is_defesa_pessoal(sub))
                     save_score(db,sid,subject_id,exam1,exam2,work,status)
                     db.commit()
                     confirmed=db.execute("SELECT exam1,exam2,work,status FROM scores WHERE student_id=? AND subject_id=?",(sid,subject_id)).fetchone()
@@ -871,6 +914,6 @@ class Handler(SimpleHTTPRequestHandler):
                     cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);self.output({"ok":True},cookie="efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");return
                 else:self.output({"error":"Rota inexistente."},404);return
             self.output({"ok":True})
-        except (ValueError,sqlite3.Error) as error:self.output({"error":str(error)},400)
+        except (ValueError,TypeError,sqlite3.Error) as error:self.output({"error":str(error)},400)
 
-if __name__=="__main__":initialize();print(f"Portal EFAS em http://{HOST}:{PORT}/");ThreadingHTTPServer((HOST,PORT),Handler).serve_forever()
+if __name__=="__main__":validate_deployment_files();initialize();print(f"Portal EFAS em http://{HOST}:{PORT}/");ThreadingHTTPServer((HOST,PORT),Handler).serve_forever()

@@ -190,16 +190,21 @@ function scoreCell(apt,value){
   return value==null?'—':fmt(value);
 }
 
+function isDefesaPessoal(subject){
+  return /defesa pessoal/i.test(String(subject||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''));
+}
+
 function renderReport(student){
   const r=student.ranking;
   const rows=student.scores.length?student.scores.map(x=>{
-    const total=(x.exam1||0)+(x.exam2||0)+(x.work||0);
+    const defesa=isDefesaPessoal(x.subject);
+    const total=(defesa?0:(x.exam1||0))+(x.exam2||0)+(x.work||0);
     const apt=x.grading_mode==='apt';
     const totalLabel=apt?esc(x.status||'—'):fmt(total);
     return{
       subject:x.subject,
       meta:`${x.hours} h/a${x.grading_mode==='taf'?' • TAF':''}`,
-      exam1:scoreCell(apt,x.exam1),
+      exam1:defesa?'—':scoreCell(apt,x.exam1),
       exam2:scoreCell(apt,x.exam2),
       work:scoreCell(apt,x.work),
       total:totalLabel,
@@ -224,8 +229,8 @@ function renderReport(student){
         <thead>
           <tr>
             <th>Disciplina</th>
-            <th>Prova 1 / TAF 1</th>
-            <th>Prova 2 / TAF 2</th>
+            <th>AVC / TAF 1</th>
+            <th>AVF / TAF 2</th>
             <th>Trabalho / TAF 3</th>
             <th>Total</th>
           </tr>
@@ -248,8 +253,8 @@ function renderReport(student){
             <small>${esc(x.meta)}</small>
           </header>
           <dl>
-            <div><dt>Prova 1 / TAF 1</dt><dd>${x.exam1}</dd></div>
-            <div><dt>Prova 2 / TAF 2</dt><dd>${x.exam2}</dd></div>
+            <div><dt>AVC / TAF 1</dt><dd>${x.exam1}</dd></div>
+            <div><dt>AVF / TAF 2</dt><dd>${x.exam2}</dd></div>
             <div><dt>Trabalho / TAF 3</dt><dd>${x.work}</dd></div>
             <div class="score-card-total"><dt>Total</dt><dd>${x.total}</dd></div>
           </dl>
@@ -319,9 +324,10 @@ function renderEntrySheet(sheet){
       if(!field)return'<td class="entry-empty">—</td>';
       return`<td>${entryFieldMarkup(row,field)}</td>`;
     };
+    const components=row.fields.map(field=>field.label).join(' + ');
     const title=row.grading_mode==='taf'
-      ?`TAF <small class="table-sub">${esc(row.subject)} • 3 avaliações</small>`
-      :`${esc(row.subject)} <small class="table-sub">2 provas + trabalho</small>`;
+      ?`TAF <small class="table-sub">${esc(row.subject)} • ${esc(components)}</small>`
+      :`${esc(row.subject)} <small class="table-sub">${esc(components)}</small>`;
     if(row.grading_mode==='apt')return`<tr data-subject-id="${row.subject_id}"><td><strong>${esc(row.subject)}</strong></td><td colspan="3">${entryFieldMarkup(row,row.fields[0])}</td></tr>`;
     return`<tr data-subject-id="${row.subject_id}">
       <td><strong>${title}</strong></td>
@@ -335,7 +341,7 @@ function renderEntrySheet(sheet){
     const title=row.grading_mode==='taf'
       ?`TAF • ${esc(row.subject)}`
       :esc(row.subject);
-    const subtitle=row.grading_mode==='taf'?'3 avaliações':'2 provas + trabalho';
+    const subtitle=row.fields.map(field=>field.label).join(' + ');
     return`<article class="entry-card" data-subject-id="${row.subject_id}">
       <header>
         <h4>${title}</h4>
@@ -353,8 +359,8 @@ function renderEntrySheet(sheet){
         <thead>
           <tr>
             <th>Disciplina</th>
-            <th>Prova 1 / TAF 1</th>
-            <th>Prova 2 / TAF 2</th>
+            <th>AVC / TAF 1</th>
+            <th>AVF / TAF 2</th>
             <th>Trabalho / TAF 3</th>
           </tr>
         </thead>

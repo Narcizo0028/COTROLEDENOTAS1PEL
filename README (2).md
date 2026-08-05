@@ -23,7 +23,7 @@ O banco existente permanece no caminho:
 No painel do Render, abra o serviço `controle-notas-1-pelotao` e confirme:
 
 - Runtime: Python.
-- Build Command: `pip install -r requirements.txt`
+- Build Command: `python -m pip install "reportlab>=4.0,<5" "pdfplumber>=0.11,<1"`
 - Start Command: `python server.py`
 - Health Check Path: `/`
 - Variável `EFAS_HOST`: `0.0.0.0`

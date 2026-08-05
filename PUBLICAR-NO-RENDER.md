@@ -11,6 +11,8 @@ PACOTE CORRIGIDO PARA O RENDER
    - admin.js começa com: const $=
 6. No Render, use Manual Deploy > Deploy latest commit.
 7. Abra o painel pela URL terminada em /admin.html, nunca /admin.js.
+8. Em Settings, confirme o Build Command:
+   python -m pip install "reportlab>=4.0,<5" "pdfplumber>=0.11,<1"
 
 Arquivos que não devem ser enviados:
 - notas.db, notas.db-shm ou notas.db-wal
