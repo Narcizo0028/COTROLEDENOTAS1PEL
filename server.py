@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-import base64, binascii, difflib, hashlib, hmac, io, json, math, os, re, secrets, sqlite3, time, unicodedata
+import base64, binascii, difflib, hashlib, hmac, io, json, os, re, secrets, sqlite3, time, unicodedata
 
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "notas.db"
@@ -160,19 +160,13 @@ def assert_db_writable(db):
         db.commit()
     except sqlite3.Error as error:
         raise sqlite3.Error("Não foi possível gravar no armazenamento de notas. Confira o disco permanente do serviço.") from error
-    if os.environ.get("RENDER") and "/opt/render/project/src/data" not in str(DB).resolve().as_posix():
+    if os.environ.get("RENDER") and "/opt/render/project/src/data" not in DB.resolve().as_posix():
         raise sqlite3.Error("O armazenamento de notas não está no disco permanente. As notas podem sumir ao reiniciar o site.")
 
 def is_defesa_pessoal(subject):
-    """Identifica Defesa Pessoal Policial: AVF 6 pontos + Trabalho 4 pontos, sem AVC."""
+    """Identifica a disciplina mesmo se o texto variar em acentuação."""
     if not subject:
         return False
-    if not isinstance(subject, str):
-        try:
-            if subject["grading_mode"] == "defesa":
-                return True
-        except (KeyError, TypeError):
-            pass
     if isinstance(subject, str):
         name = subject
     else:
@@ -182,35 +176,6 @@ def is_defesa_pessoal(subject):
             name = subject["subject"]
     name = unicodedata.normalize("NFKD", str(name or "")).encode("ascii", "ignore").decode().casefold()
     return "defesa pessoal" in name
-
-def converter_numero(valor):
-    if isinstance(valor, (int, float)):
-        number = float(valor)
-        return 0.0 if math.isnan(number) or math.isinf(number) else number
-    texto = str(valor or "0").strip()
-    if not texto:
-        return 0.0
-    if "," in texto:
-        texto = texto.replace(".", "").replace(",", ".")
-    try:
-        number = float(texto)
-    except ValueError:
-        return 0.0
-    return 0.0 if math.isnan(number) or math.isinf(number) else number
-
-def calcular_media(pontos_obtidos, pontos_distribuidos):
-    obtidos = converter_numero(pontos_obtidos)
-    distribuidos = converter_numero(pontos_distribuidos)
-    if distribuidos <= 0:
-        return 0.0
-    media = min((obtidos / distribuidos) * 10, 10.0)
-    return math.floor(media * 100) / 100
-
-def formatar_media(valor):
-    numero = math.floor(converter_numero(valor) * 100) / 100
-    inteiro = int(numero)
-    centavos = int((numero - inteiro) * 100 + 1e-9)
-    return f"{inteiro},{centavos:02d}"
 
 def parse_grade_value(value, maximum, label, blank_as_zero=True):
     # Para lançamento manual, campo em branco representa a mesma nota que zero.
@@ -331,7 +296,6 @@ def initialize():
         db.execute("UPDATE subjects SET grading_mode='normal'")
         db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
         db.execute("UPDATE subjects SET grading_mode='taf' WHERE name='Educação Física Militar'")
-        db.execute("UPDATE subjects SET grading_mode='defesa' WHERE name='Defesa Pessoal Policial'")
         calendar_version=db.execute("SELECT value FROM settings WHERE key='official_calendar_version'").fetchone()
         if not calendar_version:
             db.execute("DELETE FROM exams")
@@ -484,12 +448,12 @@ def ranking(db):
     rows = db.execute("""SELECT s.id,s.name,s.rank,s.observation,
       COALESCE(SUM(CASE
         WHEN sub.grading_mode='apt' THEN 0
-        WHEN sub.grading_mode='defesa' THEN COALESCE(sc.exam2,0)+COALESCE(sc.work,0)
+        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN COALESCE(sc.exam2,0)+COALESCE(sc.work,0)
         ELSE COALESCE(sc.exam1,0)+COALESCE(sc.exam2,0)+COALESCE(sc.work,0) END),0) points,
       COALESCE(SUM(
         CASE WHEN sub.grading_mode='apt' THEN 0
         WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
-        WHEN sub.grading_mode='defesa' THEN (CASE WHEN sc.exam2>0 THEN 6 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
+        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN (CASE WHEN sc.exam2>0 THEN 6 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
         ELSE (CASE WHEN sc.exam1>0 AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work>0 THEN 3 ELSE 0 END) END
       ),0) distributed,
       COUNT(CASE WHEN sub.grading_mode!='apt' AND (sc.exam1>0 OR sc.exam2>0 OR sc.work>0) THEN 1 END) subjects_count
@@ -498,7 +462,7 @@ def ranking(db):
     result=[]; last=None; position=0
     for index,row in enumerate(rows,1):
         if last is None or row["points"]<last: position=index
-        last=row["points"]; item=dict(row); item["position"]=position; item["average"]=calcular_media(row["points"], row["distributed"]); result.append(item)
+        last=row["points"]; item=dict(row); item["position"]=position; item["average"]=round(row["points"]/row["subjects_count"],2) if row["subjects_count"] else 0; result.append(item)
     return result
 
 def student_ranking_view(rows):
@@ -540,12 +504,12 @@ def notes_report_pdf(db):
         table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#8a6b25')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(3,1),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#c9c2b2')),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f5f2e9')]),('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),3)]));story.append(table)
     else:story.append(Paragraph('Nenhum lançamento de nota foi encontrado.',styles['Normal']))
     distributed_rows=sorted(ranking(db),key=lambda item:str(item['name']).casefold())
-    story.append(Paragraph('Resumo por discente',section_title))
+    story.append(Paragraph('Pontos distribuídos por discente',section_title))
     if distributed_rows:
-        distributed_data=[[Paragraph('Discente',head),Paragraph('Matrícula',head),Paragraph('Pontos obtidos',head),Paragraph('Pontos distribuídos',head),Paragraph('Média',head)]]
+        distributed_data=[[Paragraph('Discente',head),Paragraph('Matrícula',head),Paragraph('Pontos distribuídos',head)]]
         for item in distributed_rows:
-            distributed_data.append([Paragraph(str(item['name']),cell),Paragraph(str(item['id']),cell),Paragraph(fmt(item['points']),cell),Paragraph(fmt(item['distributed']),cell),Paragraph(formatar_media(calcular_media(item['points'],item['distributed'])),cell)])
-        distributed_table=Table(distributed_data,colWidths=[68*mm,28*mm,28*mm,28*mm,20*mm],repeatRows=1,hAlign='LEFT')
+            distributed_data.append([Paragraph(str(item['name']),cell),Paragraph(str(item['id']),cell),Paragraph(fmt(item['distributed']),cell)])
+        distributed_table=Table(distributed_data,colWidths=[90*mm,35*mm,42*mm],repeatRows=1,hAlign='LEFT')
         distributed_table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#8a6b25')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,1),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#c9c2b2')),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f5f2e9')]),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
         story.append(distributed_table)
     else:story.append(Paragraph('Nenhum discente cadastrado.',styles['Normal']))
@@ -557,13 +521,11 @@ def notes_report_pdf(db):
 def validate_deployment_files():
     """Interrompe a inicialização se arquivos essenciais tiverem sido trocados no envio."""
     signatures = {
-        "server.py": '"""Servidor local EFAS',
         "admin.html": "<!DOCTYPE html>",
         "index.html": "<!DOCTYPE html>",
         "admin.js": "const $=",
         "script.js": "let exams=",
         "render.yaml": "services:",
-        "requirements.txt": "reportlab>=",
     }
     for filename, expected in signatures.items():
         path = ROOT / filename
@@ -949,7 +911,7 @@ class Handler(SimpleHTTPRequestHandler):
                     if (expected_empty and confirmed) or (not expected_empty and not score_matches(confirmed,exam1,exam2,work,status)):
                         raise sqlite3.Error('A conferência exata da nota gravada não foi concluída.')
                 elif self.path=="/api/admin/logout":
-                    cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);secure="; Secure" if COOKIE_SECURE else "";self.output({"ok":True},cookie=f"efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0{secure}");return
+                    cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);self.output({"ok":True},cookie="efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");return
                 else:self.output({"error":"Rota inexistente."},404);return
             self.output({"ok":True})
         except (ValueError,TypeError,sqlite3.Error) as error:self.output({"error":str(error)},400)

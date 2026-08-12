@@ -3,7 +3,7 @@ services:
     name: controle-notas-1-pelotao
     runtime: python
     plan: starter
-    buildCommand: python -m pip install -r requirements.txt
+    buildCommand: python -m pip install "reportlab>=4.0,<5" "pdfplumber>=0.11,<1"
     startCommand: python server.py
     healthCheckPath: /
     envVars:
