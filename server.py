@@ -5,6 +5,7 @@ from html import escape as html_escape
 from pathlib import Path
 from urllib.parse import urlsplit
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from zoneinfo import ZoneInfo
 import base64, binascii, difflib, hashlib, hmac, io, json, os, re, secrets, sqlite3, time, unicodedata
 
@@ -444,6 +445,36 @@ def parse_student_scores_pdf(raw, subjects, student_id):
     if not validated:raise ValueError(f'Nenhuma nota válida foi encontrada para a matrícula {student_id}.')
     return sorted(validated,key=lambda item:item['subject'])
 
+def converter_numero(valor):
+    """Converte valores numéricos, inclusive textos no formato brasileiro."""
+    if isinstance(valor, Decimal):
+        return valor
+    if isinstance(valor, (int, float)):
+        try:
+            return Decimal(str(valor))
+        except (InvalidOperation, ValueError):
+            return Decimal("0")
+
+    texto = str(valor if valor is not None else "").strip()
+    if not texto:
+        return Decimal("0")
+    # Quando há vírgula, o ponto é separador de milhar; sem vírgula, o ponto é decimal.
+    texto = texto.replace(".", "").replace(",", ".") if "," in texto else texto
+    try:
+        return Decimal(texto)
+    except InvalidOperation:
+        return Decimal("0")
+
+def calcular_media(pontos_obtidos, pontos_distribuidos):
+    """Retorna a média numérica (0 a 10), truncada em duas casas decimais."""
+    obtidos = converter_numero(pontos_obtidos)
+    distribuidos = converter_numero(pontos_distribuidos)
+    if not obtidos.is_finite() or not distribuidos.is_finite() or distribuidos <= 0:
+        return 0.0
+    media = (obtidos / distribuidos) * Decimal("10")
+    media = max(Decimal("0"), min(Decimal("10"), media))
+    return float(media.quantize(Decimal("0.01"), rounding=ROUND_DOWN))
+
 def ranking(db):
     rows = db.execute("""SELECT s.id,s.name,s.rank,s.observation,
       COALESCE(SUM(CASE
@@ -455,14 +486,21 @@ def ranking(db):
         WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
         WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN (CASE WHEN sc.exam2>0 THEN 6 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
         ELSE (CASE WHEN sc.exam1>0 AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work>0 THEN 3 ELSE 0 END) END
-      ),0) distributed,
-      COUNT(CASE WHEN sub.grading_mode!='apt' AND (sc.exam1>0 OR sc.exam2>0 OR sc.work>0) THEN 1 END) subjects_count
+      ),0) distributed
       FROM students s LEFT JOIN scores sc ON sc.student_id=s.id LEFT JOIN subjects sub ON sub.id=sc.subject_id
-      GROUP BY s.id ORDER BY points DESC,s.name""").fetchall()
-    result=[]; last=None; position=0
-    for index,row in enumerate(rows,1):
-        if last is None or row["points"]<last: position=index
-        last=row["points"]; item=dict(row); item["position"]=position; item["average"]=round(row["points"]/row["subjects_count"],2) if row["subjects_count"] else 0; result.append(item)
+      GROUP BY s.id""").fetchall()
+    result=[]
+    for row in rows:
+        item=dict(row)
+        item["average"]=calcular_media(item["points"], item["distributed"])
+        result.append(item)
+
+    # O ranking usa a média numérica, jamais sua representação formatada.
+    result.sort(key=lambda item: (-item["average"], -item["points"], str(item["name"]).casefold()))
+    last=None; position=0
+    for index,row in enumerate(result,1):
+        if last is None or row["average"] != last: position=index
+        last=row["average"]; row["position"]=position
     return result
 
 def student_ranking_view(rows):
