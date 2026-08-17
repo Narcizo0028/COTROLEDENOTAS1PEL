@@ -295,7 +295,7 @@ def initialize():
             salt,digest=password_hash(INITIAL_PASSWORD); db.execute("INSERT INTO admins VALUES(?,?,?,1)",(USER,salt,digest))
         db.executemany("INSERT INTO subjects(hours,name,exam_count) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET hours=excluded.hours,exam_count=excluded.exam_count",SUBJECTS)
         db.execute("UPDATE subjects SET grading_mode='normal'")
-        db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
+        db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Instrumentos de Menor Potencial Ofensivo','Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
         db.execute("UPDATE subjects SET grading_mode='taf' WHERE name='Educação Física Militar'")
         calendar_version=db.execute("SELECT value FROM settings WHERE key='official_calendar_version'").fetchone()
         if not calendar_version:
