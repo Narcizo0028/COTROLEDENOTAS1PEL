@@ -466,14 +466,19 @@ def converter_numero(valor):
         return Decimal("0")
 
 def calcular_media(pontos_obtidos, pontos_distribuidos):
-    """Retorna a média numérica (0 a 10), truncada em duas casas decimais."""
+    """Retorna a média proporcional (0 a 10), mantendo precisão para a classificação."""
     obtidos = converter_numero(pontos_obtidos)
     distribuidos = converter_numero(pontos_distribuidos)
     if not obtidos.is_finite() or not distribuidos.is_finite() or distribuidos <= 0:
         return 0.0
     media = (obtidos / distribuidos) * Decimal("10")
-    media = max(Decimal("0"), min(Decimal("10"), media))
-    return float(media.quantize(Decimal("0.01"), rounding=ROUND_DOWN))
+    return float(max(Decimal("0"), min(Decimal("10"), media)))
+
+def calcular_aproveitamento(pontos_obtidos, pontos_distribuidos):
+    """Retorna o aproveitamento proporcional em percentual, sem arredondar para o ranking."""
+    obtidos=converter_numero(pontos_obtidos);distribuidos=converter_numero(pontos_distribuidos)
+    if not obtidos.is_finite() or not distribuidos.is_finite() or distribuidos<=0:return 0.0
+    return float(max(Decimal("0"),min(Decimal("100"),(obtidos/distribuidos)*Decimal("100"))))
 
 def ranking(db):
     rows = db.execute("""SELECT s.id,s.name,s.rank,s.observation,
@@ -483,9 +488,9 @@ def ranking(db):
         ELSE COALESCE(sc.exam1,0)+COALESCE(sc.exam2,0)+COALESCE(sc.work,0) END),0) points,
       COALESCE(SUM(
         CASE WHEN sub.grading_mode='apt' THEN 0
-        WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
-        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN (CASE WHEN sc.exam2>0 THEN 6 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
-        ELSE (CASE WHEN sc.exam1>0 AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work>0 THEN 3 ELSE 0 END) END
+        WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1 IS NOT NULL THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2 IS NOT NULL THEN 3 ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 4 ELSE 0 END)
+        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN (CASE WHEN sc.exam2 IS NOT NULL THEN 6 ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 4 ELSE 0 END)
+        ELSE (CASE WHEN sc.exam1 IS NOT NULL AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2 IS NOT NULL THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 3 ELSE 0 END) END
       ),0) distributed
       FROM students s LEFT JOIN scores sc ON sc.student_id=s.id LEFT JOIN subjects sub ON sub.id=sc.subject_id
       GROUP BY s.id""").fetchall()
@@ -493,19 +498,21 @@ def ranking(db):
     for row in rows:
         item=dict(row)
         item["average"]=calcular_media(item["points"], item["distributed"])
+        item["percentage"]=calcular_aproveitamento(item["points"], item["distributed"])
         result.append(item)
 
     # O ranking usa a média numérica, jamais sua representação formatada.
-    result.sort(key=lambda item: (-item["average"], -item["points"], str(item["name"]).casefold()))
+    result.sort(key=lambda item: (-item["average"], -item["points"], -item["distributed"], str(item["name"]).casefold()))
     last=None; position=0
     for index,row in enumerate(result,1):
-        if last is None or row["average"] != last: position=index
-        last=row["average"]; row["position"]=position
+        tie=(row["average"],row["points"],row["distributed"])
+        if last is None or tie!=last: position=index
+        last=tie;row["position"]=position
     return result
 
 def student_ranking_view(rows):
     """Expõe somente colocação e pontuação, sem qualquer dado identificador."""
-    return [{key:item[key] for key in ("position","points","distributed","average")} for item in rows]
+    return [{key:item[key] for key in ("position","points","distributed","average","percentage")} for item in rows]
 
 def notes_report_pdf(db):
     """Gera o relatório administrativo de lançamentos em PDF."""
@@ -900,8 +907,12 @@ class Handler(SimpleHTTPRequestHandler):
                     db.commit()
                     self.output({"ok":True,"student_subject_restriction":student_subject_restriction(db)});return
                 elif self.path=="/api/admin/password":
-                    password=data.get("password","")
-                    if len(password)<12:raise ValueError("A senha deve possuir pelo menos 12 caracteres.")
+                    current_password=str(data.get("current_password", ""));password=str(data.get("password", ""));confirmation=str(data.get("confirmation", ""))
+                    current=db.execute("SELECT salt,password_hash FROM admins WHERE username=?",(user,)).fetchone()
+                    if not current or not verify(current_password,current["salt"],current["password_hash"]):raise ValueError("A senha atual está incorreta.")
+                    if password!=confirmation:raise ValueError("A confirmação da nova senha não confere.")
+                    if len(password)<12:raise ValueError("A nova senha deve possuir pelo menos 12 caracteres.")
+                    if verify(password,current["salt"],current["password_hash"]):raise ValueError("Escolha uma senha diferente da atual.")
                     salt,digest=password_hash(password);db.execute("UPDATE admins SET salt=?,password_hash=?,must_change=0 WHERE username=?",(salt,digest,user))
                 elif self.path=="/api/admin/exams":
                     date,subject,exam_time,exam_type=(str(data.get(key,"")).strip() for key in ("date","subject","time","type"))
@@ -917,9 +928,15 @@ class Handler(SimpleHTTPRequestHandler):
                     if not exam_id:raise ValueError("Prova inválida.")
                     if db.execute("DELETE FROM exams WHERE id=?",(exam_id,)).rowcount!=1:raise ValueError("Prova não encontrada no calendário.")
                 elif self.path=="/api/admin/student":
-                    sid=str(data.get("student_id","")).strip(); code=str(data.get("access_code","")).strip()
-                    if not sid or not data.get("name") or len(code)<6:raise ValueError("Preencha matrícula, nome e código com pelo menos 6 caracteres.")
-                    salt,digest=password_hash(code);db.execute("INSERT INTO students(id,name,rank,salt,access_hash,observation,must_change) VALUES(?,?,?,?,?,'',1) ON CONFLICT(id) DO UPDATE SET name=excluded.name,rank=excluded.rank,salt=excluded.salt,access_hash=excluded.access_hash,must_change=1",(sid,str(data.get("name","")).strip(),str(data.get("rank","")).strip(),salt,digest))
+                    sid=str(data.get("student_id","")).strip();code=str(data.get("access_code","")).strip();name=str(data.get("name","")).strip();rank=str(data.get("rank","")).strip()
+                    if not sid or not name or not rank:raise ValueError("Informe matrícula, nome e posto/graduação.")
+                    existing=db.execute("SELECT id FROM students WHERE id=?",(sid,)).fetchone()
+                    if not existing and (not code or len(code)<6):raise ValueError("Informe um código individual com pelo menos 6 caracteres para o novo discente.")
+                    if code and len(code)<6:raise ValueError("O código individual deve possuir pelo menos 6 caracteres.")
+                    if existing and not code:
+                        db.execute("UPDATE students SET name=?,rank=? WHERE id=?",(name,rank,sid))
+                    else:
+                        salt,digest=password_hash(code);db.execute("INSERT INTO students(id,name,rank,salt,access_hash,observation,must_change) VALUES(?,?,?,?,?,'',1) ON CONFLICT(id) DO UPDATE SET name=excluded.name,rank=excluded.rank,salt=excluded.salt,access_hash=excluded.access_hash,must_change=1",(sid,name,rank,salt,digest))
                 elif self.path=="/api/admin/observation/save":
                     sid=str(data.get("student_id","")).strip();observation=str(data.get("observation","")).strip()
                     if not sid or not db.execute("SELECT 1 FROM students WHERE id=?",(sid,)).fetchone():raise ValueError("Selecione um discente valido.")
