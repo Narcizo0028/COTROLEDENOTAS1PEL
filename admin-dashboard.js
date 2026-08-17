@@ -4,8 +4,8 @@ const dashboardTableStates = new Map();
 const dashboardTableConfigs = new Map();
 const dashboardViewTitles = {
   overview: 'Visão geral', students: 'Discentes', subjects: 'Disciplinas',
-  grades: 'Lançamento de notas', calendar: 'Calendário de avaliações',
-  ranking: 'Ranking', reports: 'Relatórios', settings: 'Configurações'
+  grades: 'Lançamento de notas', authorizations: 'Autorizações', 'pdf-import': 'Importação por PDF',
+  calendar: 'Calendário de avaliações', ranking: 'Ranking', reports: 'Relatórios', settings: 'Configurações'
 };
 let dashboardMetrics = null;
 let dashboardCalendarMode = 'month';
@@ -101,7 +101,8 @@ function dashboardActivateView(view, focusSelector = '') {
   const target = dashboardViewTitles[view] ? view : 'overview';
   document.querySelectorAll('.admin-nav-item[data-admin-view]').forEach(button => button.classList.toggle('active', button.dataset.adminView === target));
   document.querySelectorAll('.admin-view').forEach(section => {
-    const active = section.dataset.view === target;
+    const sectionView = section.dataset.view;
+    const active = sectionView === target || (target === 'grades' && ['authorizations', 'pdf-import'].includes(sectionView));
     section.hidden = !active;
     section.classList.toggle('active', active);
   });
@@ -620,28 +621,6 @@ document.querySelectorAll('[data-calendar-mode]').forEach(button => button.addEv
 ['report-filter-student', 'report-filter-subject', 'report-filter-type', 'report-filter-status', 'report-filter-start', 'report-filter-end'].forEach(id => $(`#${id}`).addEventListener('change', () => { dashboardRenderReports(); dashboardRenderScores(); }));
 $('#report-clear-filters').addEventListener('click', () => { ['report-filter-student', 'report-filter-subject', 'report-filter-type', 'report-filter-status', 'report-filter-start', 'report-filter-end'].forEach(id => { $(`#${id}`).value = ''; }); const state = dashboardTableStates.get('notas-lancadas'); if (state) { state.search = ''; state.filters = {}; state.page = 1; } dashboardRenderReports(); dashboardRenderScores(); });
 $('#report-cards').addEventListener('click', event => { const button = event.target.closest('[data-report-type]'); if (button) dashboardGenerateReport(button.dataset.reportType); });
-document.addEventListener('click', async event => {
-  const editButton = event.target.closest('[data-edit-exam]');
-  if (editButton) {
-    const exam = cache.exams.find(item => String(item.id) === editButton.dataset.editExam);
-    if (!exam) return;
-    const form = $('#exam-form');
-    form.elements.id.value = exam.id; form.elements.date.value = exam.date; form.elements.subject.value = exam.subject;
-    updateCalendarTypes(); form.elements.type.value = exam.type; form.elements.time.value = exam.time; form.elements.place.value = exam.place;
-    $('#exam-form-title').textContent = 'Editar avaliação'; $('#exam-save-button').textContent = 'Salvar alterações'; $('#exam-cancel-edit').hidden = false;
-    form.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' }); form.elements.date.focus();
-  }
-  const deleteButton = event.target.closest('[data-delete-exam]');
-  if (deleteButton) {
-    const exam = cache.exams.find(item => String(item.id) === deleteButton.dataset.deleteExam);
-    if (!exam || !window.confirm(`Excluir a avaliação de “${exam.subject}” em ${exam.date}?`)) return;
-    deleteButton.disabled = true;
-    try { await api('/api/admin/exam/delete', { method: 'POST', body: JSON.stringify({ id: exam.id }) }); await loadData(); }
-    catch (error) { $('#exam-form .panel-message').textContent = `Erro ao excluir: ${error.message}`; deleteButton.disabled = false; }
-  }
-});
-$('#exam-cancel-edit').addEventListener('click', () => { const form = $('#exam-form'); form.reset(); form.elements.id.value = ''; $('#exam-form-title').textContent = 'Cadastrar avaliação'; $('#exam-save-button').textContent = 'Cadastrar no calendário'; $('#exam-cancel-edit').hidden = true; });
-new MutationObserver(() => { const message = $('#exam-form .panel-message').textContent; if (message.includes('cadastrada')) { $('#exam-form-title').textContent = 'Cadastrar avaliação'; $('#exam-save-button').textContent = 'Cadastrar no calendário'; $('#exam-cancel-edit').hidden = true; } }).observe($('#exam-form .panel-message'), { childList: true, subtree: true });
 $('#ranking-refresh-button').addEventListener('click', async event => {
   const button = event.currentTarget, message = $('#ranking-updated-at');
   button.disabled = true; button.textContent = 'Atualizando...'; message.textContent = 'Recalculando o ranking com os dados atuais...';
