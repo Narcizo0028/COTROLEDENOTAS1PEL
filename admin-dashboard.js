@@ -585,7 +585,6 @@ document.addEventListener('click', event => {
 });
 $('#admin-menu-toggle').addEventListener('click', dashboardToggleMenu);
 $('#admin-mobile-overlay').addEventListener('click', dashboardCloseMobileMenu);
-$('#sidebar-logout-button').addEventListener('click', () => $('#logout-button').click());
 $('#admin-notifications-button').addEventListener('click', event => { event.stopPropagation(); const panel = $('#admin-notifications-panel'); panel.hidden = !panel.hidden; event.currentTarget.setAttribute('aria-expanded', String(!panel.hidden)); });
 $('#admin-global-search').addEventListener('input', event => dashboardGlobalSearch(event.target.value));
 $('#admin-global-search').addEventListener('keydown', event => { if (event.key === 'Escape') { $('#admin-search-results').hidden = true; event.currentTarget.blur(); } });
