@@ -4,9 +4,63 @@ const dashboardTableStates = new Map();
 const dashboardTableConfigs = new Map();
 const dashboardViewTitles = {
   overview: 'Visão geral', students: 'Discentes', subjects: 'Disciplinas',
-  grades: 'Lançamento de notas', calendar: 'Calendário de avaliações',
+  grades: 'Lançamento de notas', calendar: 'Calendário de provas',
   ranking: 'Ranking', reports: 'Relatórios', settings: 'Configurações'
 };
+const dashboardGradesSubViews = ['launch', 'import', 'student-entry'];
+const dashboardCalendarSubViews = ['register', 'listed'];
+
+function dashboardResolveGradesSubView(focusSelector = '') {
+  const focus = String(focusSelector || '');
+  if (focus.includes('pdf-score') || focus.includes('student-score-pdf')) return 'import';
+  if (focus.includes('student-subject-restriction') || focus.includes('authorization') || focus.includes('student-entry-toggle')) return 'student-entry';
+  const saved = localStorage.getItem('efas-grades-subview');
+  return dashboardGradesSubViews.includes(saved) ? saved : 'launch';
+}
+
+function dashboardResolveCalendarSubView(focusSelector = '') {
+  const focus = String(focusSelector || '');
+  if (focus.includes('exam-form') || focus.includes('calendar-pdf')) return 'register';
+  const saved = localStorage.getItem('efas-calendar-subview');
+  return dashboardCalendarSubViews.includes(saved) ? saved : 'register';
+}
+
+function dashboardActivateGradesSubView(subView, focusSelector = '') {
+  const target = dashboardGradesSubViews.includes(subView) ? subView : 'launch';
+  document.querySelectorAll('[data-grades-subview]').forEach(button => {
+    const active = button.dataset.gradesSubview === target;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  document.querySelectorAll('[data-grades-subview-panel]').forEach(panel => {
+    const active = panel.dataset.gradesSubviewPanel === target;
+    panel.hidden = !active;
+    panel.classList.toggle('active', active);
+  });
+  localStorage.setItem('efas-grades-subview', target);
+  if (target === 'student-entry') dashboardRenderAuthorization();
+  if (focusSelector) requestAnimationFrame(() => document.querySelector(focusSelector)?.focus());
+}
+
+function dashboardActivateCalendarSubView(subView, focusSelector = '') {
+  const target = dashboardCalendarSubViews.includes(subView) ? subView : 'register';
+  document.querySelectorAll('[data-calendar-subview]').forEach(button => {
+    const active = button.dataset.calendarSubview === target;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  document.querySelectorAll('[data-calendar-subview-panel]').forEach(panel => {
+    const active = panel.dataset.calendarSubviewPanel === target;
+    panel.hidden = !active;
+    panel.classList.toggle('active', active);
+  });
+  localStorage.setItem('efas-calendar-subview', target);
+  if (target === 'listed') {
+    dashboardRenderCalendar();
+    dashboardEnhanceCalendarActions();
+  }
+  if (focusSelector) requestAnimationFrame(() => document.querySelector(focusSelector)?.focus());
+}
 let dashboardMetrics = null;
 let dashboardCalendarMode = 'month';
 let dashboardAuthorizationDraft = null;
@@ -97,8 +151,10 @@ function dashboardBuildMetrics() {
   };
 }
 
-function dashboardActivateView(view, focusSelector = '') {
+function dashboardActivateView(view, focusSelector = '', options = {}) {
   const target = dashboardViewTitles[view] ? view : 'overview';
+  const gradesSubView = options.gradesSubView || (target === 'grades' ? dashboardResolveGradesSubView(focusSelector) : '');
+  const calendarSubView = options.calendarSubView || (target === 'calendar' ? dashboardResolveCalendarSubView(focusSelector) : '');
   document.querySelectorAll('.admin-nav-item[data-admin-view]').forEach(button => button.classList.toggle('active', button.dataset.adminView === target));
   document.querySelectorAll('.admin-view').forEach(section => {
     const active = section.dataset.view === target;
@@ -109,9 +165,10 @@ function dashboardActivateView(view, focusSelector = '') {
   history.replaceState(null, '', `#${target}`);
   localStorage.setItem('efas-admin-view', target);
   dashboardCloseMobileMenu();
-  if (target === 'calendar') dashboardRenderCalendar();
-  if (target === 'grades') dashboardRenderAuthorization();
-  if (focusSelector) requestAnimationFrame(() => document.querySelector(focusSelector)?.focus());
+  if (target === 'grades') dashboardActivateGradesSubView(gradesSubView, focusSelector);
+  if (target === 'calendar') dashboardActivateCalendarSubView(calendarSubView, focusSelector);
+  if (target === 'ranking') dashboardRenderRanking();
+  if (focusSelector && target !== 'grades' && target !== 'calendar') requestAnimationFrame(() => document.querySelector(focusSelector)?.focus());
   window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
 
@@ -200,23 +257,28 @@ function dashboardRenderOverview() {
   const cards = [
     ['students', 'Total de discentes', cache.students.length, 'Cadastros ativos no pelotão', '♙', 'students', ''],
     ['subjects', 'Total de disciplinas', cache.subjects.length, 'Componentes curriculares', '◇', 'subjects', ''],
-    ['exams', 'Avaliações cadastradas', cache.exams.length, `${dashboardMetrics.realized.length} realizadas`, '◷', 'calendar', ''],
-    ['realized', 'Avaliações realizadas', dashboardMetrics.realized.length, 'Com data e horário encerrados', '✓', 'calendar', 'success'],
-    ['launched', 'Notas lançadas', dashboardMetrics.launchedComponents, `${dashboardMetrics.completeScores} resultados completos`, '✎', 'grades', 'success'],
-    ['pending', 'Lançamentos pendentes', dashboardMetrics.pendingComponents, 'Componentes ainda não preenchidos', '!', 'grades', dashboardMetrics.pendingComponents ? 'warning' : 'success'],
-    ['released', 'Disciplinas liberadas', dashboardMetrics.releasedSubjects, cache.student_entry_enabled ? 'Lançamento pelo discente disponível' : 'Lançamento pelo discente bloqueado', '✓', 'grades', cache.student_entry_enabled ? 'success' : 'danger'],
-    ['upcoming', 'Próximos sete dias', dashboardMetrics.upcomingSeven.length, 'Avaliações previstas', '◷', 'calendar', dashboardMetrics.upcomingSeven.length ? 'warning' : ''],
-    ['divergences', 'Divergências encontradas', dashboardMetrics.divergenceCount, 'Valores inválidos ou duplicidades', '!', 'grades', dashboardMetrics.divergenceCount ? 'danger' : 'success']
+    ['exams', 'Avaliações cadastradas', cache.exams.length, `${dashboardMetrics.realized.length} realizadas`, '◷', 'calendar', '', 'listed'],
+    ['realized', 'Avaliações realizadas', dashboardMetrics.realized.length, 'Com data e horário encerrados', '✓', 'calendar', 'success', 'listed'],
+    ['pending', 'Lançamentos pendentes', dashboardMetrics.pendingComponents, 'Componentes ainda não preenchidos', '!', 'grades', dashboardMetrics.pendingComponents ? 'warning' : 'success', 'launch'],
+    ['released', 'Disciplinas liberadas', dashboardMetrics.releasedSubjects, cache.student_entry_enabled ? 'Lançamento pelo discente disponível' : 'Lançamento pelo discente bloqueado', '✓', 'grades', cache.student_entry_enabled ? 'success' : 'danger', 'student-entry'],
+    ['upcoming', 'Próximos sete dias', dashboardMetrics.upcomingSeven.length, 'Avaliações previstas', '◷', 'calendar', dashboardMetrics.upcomingSeven.length ? 'warning' : '', 'listed'],
+    ['divergences', 'Divergências encontradas', dashboardMetrics.divergenceCount, 'Valores inválidos ou duplicidades', '!', 'grades', dashboardMetrics.divergenceCount ? 'danger' : 'success', 'launch']
   ];
-  $('#overview-cards').innerHTML = cards.map(([, label, value, detail, icon, view, tone]) => `<button class="overview-card" type="button" data-admin-view-target="${view}" data-tone="${tone}"><span class="overview-card-top"><span class="overview-card-label">${esc(label)}</span><span class="overview-card-icon" aria-hidden="true">${icon}</span></span><strong class="overview-card-value">${fmt(value).replace(',00', '')}</strong><span class="overview-card-detail">${esc(detail)}</span></button>`).join('');
+  $('#overview-cards').innerHTML = cards.map(([, label, value, detail, icon, view, tone, subView]) => {
+    const subAttr = view === 'calendar' && subView ? ` data-calendar-subview-target="${subView}"` : view === 'grades' && subView ? ` data-grades-subview-target="${subView}"` : '';
+    return `<button class="overview-card" type="button" data-admin-view-target="${view}"${subAttr} data-tone="${tone}"><span class="overview-card-top"><span class="overview-card-label">${esc(label)}</span><span class="overview-card-icon" aria-hidden="true">${icon}</span></span><strong class="overview-card-value">${fmt(value).replace(',00', '')}</strong><span class="overview-card-detail">${esc(detail)}</span></button>`;
+  }).join('');
   const actions = [
     ['♙', 'Cadastrar discente', 'students', '#student-form input[name=student_id]'], ['◇', 'Cadastrar disciplina', 'subjects', '#subject-form input[name=name]'],
-    ['▦', 'Lançar por disciplina', 'grades', '#collective-subject'], ['✎', 'Lançar por discente', 'grades', '#score-student'],
-    ['✓', 'Liberar disciplina', 'grades', '#student-subject-restriction-enabled'], ['◷', 'Cadastrar avaliação', 'calendar', '#exam-form input[name=date]'],
-    ['⇩', 'Importar notas por PDF', 'grades', '#pdf-score-student'], ['⇩', 'Importar calendário por PDF', 'calendar', '#calendar-pdf'],
+    ['▦', 'Lançar por disciplina', 'grades', '#collective-subject', 'launch'], ['✎', 'Lançar por discente', 'grades', '#score-student', 'launch'],
+    ['✓', 'Liberar disciplina', 'grades', '#student-subject-restriction-enabled', 'student-entry'], ['◷', 'Cadastrar avaliação', 'calendar', '#exam-form input[name=date]', 'register'],
+    ['⇩', 'Importar notas por PDF', 'grades', '#pdf-score-student', 'import'], ['⇩', 'Importar calendário por PDF', 'calendar', '#calendar-pdf', 'register'],
     ['▤', 'Gerar relatório administrativo', 'reports', ''], ['#', 'Consultar ranking', 'ranking', '']
   ];
-  $('#quick-actions').innerHTML = actions.map(([icon, label, view, focus]) => `<button class="quick-action" type="button" data-admin-view-target="${view}" data-focus-target="${esc(focus)}"><span aria-hidden="true">${icon}</span><strong>${esc(label)}</strong></button>`).join('');
+  $('#quick-actions').innerHTML = actions.map(([icon, label, view, focus, subView]) => {
+    const subAttr = view === 'grades' && subView ? ` data-grades-subview-target="${esc(subView)}"` : view === 'calendar' && subView ? ` data-calendar-subview-target="${esc(subView)}"` : '';
+    return `<button class="quick-action" type="button" data-admin-view-target="${view}" data-focus-target="${esc(focus)}"${subAttr}><span aria-hidden="true">${icon}</span><strong>${esc(label)}</strong></button>`;
+  }).join('');
   const pending = [
     [dashboardMetrics.subjectsWithoutScores.length, 'Disciplinas sem notas lançadas', 'Nenhum resultado cadastrado', 'Ver disciplina', 'subjects', 'warning'],
     [dashboardMetrics.studentsWithoutScores.length, 'Discentes sem nota', 'Nenhum lançamento encontrado', 'Ver discente', 'students', 'warning'],
@@ -297,19 +359,6 @@ function dashboardFilteredScoreRows() {
     if (filters.end && (!row.exam_date || row.exam_date > filters.end)) return false;
     return true;
   });
-}
-
-function dashboardRenderScores() {
-  const rows = dashboardFilteredScoreRows();
-  dashboardRenderTable({ id: 'notas-lancadas', container: '#scores-data', rows, pageSize: 20, defaultSort: 'subject', searchPlaceholder: 'Pesquisar discente, matrícula ou disciplina', searchFields: ['student', 'student_id', 'subject'], filters: [{ key: 'student', label: 'Discente' }, { key: 'subject', label: 'Disciplina' }, { key: 'statusLabel', label: 'Situação', value: row => row.errors.length ? 'Divergência' : row.complete ? 'Completo' : 'Incompleto', options: ['Completo', 'Incompleto', 'Divergência'] }], columns: [
-    { key: 'student', label: 'Discente', value: row => row.student, render: row => `<button class="student-name-button" type="button" data-student-details="${esc(row.student_id)}">${esc(row.student)}</button><small>${esc(row.student_id)}</small>` },
-    { key: 'subject', label: 'Disciplina', value: row => row.subject },
-    { key: 'exam1', label: 'AVC / 1º TAF', value: row => row.exam1 ?? '', render: row => row.grading_mode === 'apt' || row.exam1 == null ? '—' : fmt(row.exam1), numeric: true },
-    { key: 'exam2', label: 'AVF / 2º TAF', value: row => row.exam2 ?? '', render: row => row.grading_mode === 'apt' || row.exam2 == null ? '—' : fmt(row.exam2), numeric: true },
-    { key: 'work', label: 'Trabalho / 3º TAF', value: row => row.work ?? '', render: row => row.grading_mode === 'apt' || row.work == null ? '—' : fmt(row.work), numeric: true },
-    { key: 'total', label: 'Total ou resultado', value: row => row.grading_mode === 'apt' ? row.status : row.total, render: row => `<strong>${row.grading_mode === 'apt' ? esc(row.status || '—') : fmt(row.total)}</strong>`, numeric: true },
-    { key: 'statusLabel', label: 'Situação', value: row => row.errors.length ? 'Divergência' : row.complete ? 'Completo' : 'Incompleto', render: row => `<span class="status-badge ${row.errors.length ? 'danger' : row.complete ? 'success' : 'warning'}">${row.errors.length ? 'Divergência' : row.complete ? 'Completo' : 'Incompleto'}</span>` }
-  ] });
 }
 
 function dashboardRenderRanking() {
@@ -490,7 +539,6 @@ function dashboardRenderAll() {
   dashboardRenderOverview();
   dashboardRenderStudents();
   dashboardRenderSubjects();
-  dashboardRenderScores();
   dashboardRenderRanking();
   dashboardRenderAuthorization();
   dashboardRenderCalendar();
@@ -572,11 +620,20 @@ loadData = async function enhancedLoadData() {
 };
 
 document.querySelectorAll('.admin-nav-item[data-admin-view]').forEach(button => button.addEventListener('click', () => dashboardActivateView(button.dataset.adminView)));
+document.querySelectorAll('[data-grades-subview]').forEach(button => button.addEventListener('click', () => dashboardActivateGradesSubView(button.dataset.gradesSubview)));
+document.querySelectorAll('[data-calendar-subview]').forEach(button => button.addEventListener('click', () => dashboardActivateCalendarSubView(button.dataset.calendarSubview)));
 document.addEventListener('click', event => {
   const target = event.target.closest('[data-admin-view-target]');
-  if (target) dashboardActivateView(target.dataset.adminViewTarget, target.dataset.focusTarget || '');
+  if (target) {
+    const view = target.dataset.adminViewTarget;
+    const options = {};
+    if (view === 'grades' && target.dataset.gradesSubviewTarget) options.gradesSubView = target.dataset.gradesSubviewTarget;
+    if (view === 'calendar' && target.dataset.calendarSubviewTarget) options.calendarSubView = target.dataset.calendarSubviewTarget;
+    dashboardActivateView(view, target.dataset.focusTarget || '', options);
+    return;
+  }
   const subjectButton = event.target.closest('[data-open-subject]');
-  if (subjectButton) { dashboardActivateView('grades'); setScoreMode('collective'); $('#collective-subject').value = subjectButton.dataset.openSubject; renderCollectiveScores(); dashboardGradeContext(); }
+  if (subjectButton) { dashboardActivateView('grades', '', { gradesSubView: 'launch' }); setScoreMode('collective'); $('#collective-subject').value = subjectButton.dataset.openSubject; renderCollectiveScores(); dashboardGradeContext(); }
   const searchItem = event.target.closest('[data-search-view]');
   if (searchItem) { dashboardActivateView(searchItem.dataset.searchView); $('#admin-search-results').hidden = true; if (searchItem.dataset.searchStudent) openStudentDetails(searchItem.dataset.searchStudent); if (searchItem.dataset.searchSubject) { const state = dashboardTableStates.get('disciplinas'); if (state) { state.search = cache.subjects.find(item => String(item.id) === searchItem.dataset.searchSubject)?.name || ''; dashboardRenderTable(dashboardTableConfigs.get('disciplinas')); } } }
   if (!event.target.closest('.admin-global-search')) $('#admin-search-results').hidden = true;
@@ -617,18 +674,19 @@ $('#authorization-revoke-button').addEventListener('click', () => dashboardSaveA
 
 document.querySelectorAll('[data-calendar-mode]').forEach(button => button.addEventListener('click', () => { dashboardCalendarMode = button.dataset.calendarMode; document.querySelectorAll('[data-calendar-mode]').forEach(item => item.classList.toggle('active', item === button)); dashboardRenderCalendar(); dashboardEnhanceCalendarActions(); }));
 ['calendar-filter-month', 'calendar-filter-subject', 'calendar-filter-type', 'calendar-filter-status'].forEach(id => $(`#${id}`).addEventListener('change', () => { dashboardRenderCalendar(); dashboardEnhanceCalendarActions(); }));
-['report-filter-student', 'report-filter-subject', 'report-filter-type', 'report-filter-status', 'report-filter-start', 'report-filter-end'].forEach(id => $(`#${id}`).addEventListener('change', () => { dashboardRenderReports(); dashboardRenderScores(); }));
-$('#report-clear-filters').addEventListener('click', () => { ['report-filter-student', 'report-filter-subject', 'report-filter-type', 'report-filter-status', 'report-filter-start', 'report-filter-end'].forEach(id => { $(`#${id}`).value = ''; }); const state = dashboardTableStates.get('notas-lancadas'); if (state) { state.search = ''; state.filters = {}; state.page = 1; } dashboardRenderReports(); dashboardRenderScores(); });
+['report-filter-student', 'report-filter-subject', 'report-filter-type', 'report-filter-status', 'report-filter-start', 'report-filter-end'].forEach(id => $(`#${id}`).addEventListener('change', dashboardRenderReports));
+$('#report-clear-filters').addEventListener('click', () => { ['report-filter-student', 'report-filter-subject', 'report-filter-type', 'report-filter-status', 'report-filter-start', 'report-filter-end'].forEach(id => { $(`#${id}`).value = ''; }); dashboardRenderReports(); });
 $('#report-cards').addEventListener('click', event => { const button = event.target.closest('[data-report-type]'); if (button) dashboardGenerateReport(button.dataset.reportType); });
 document.addEventListener('click', async event => {
   const editButton = event.target.closest('[data-edit-exam]');
   if (editButton) {
     const exam = cache.exams.find(item => String(item.id) === editButton.dataset.editExam);
     if (!exam) return;
+    dashboardActivateCalendarSubView('register');
     const form = $('#exam-form');
     form.elements.id.value = exam.id; form.elements.date.value = exam.date; form.elements.subject.value = exam.subject;
     updateCalendarTypes(); form.elements.type.value = exam.type; form.elements.time.value = exam.time; form.elements.place.value = exam.place;
-    $('#exam-form-title').textContent = 'Editar avaliação'; $('#exam-save-button').textContent = 'Salvar alterações'; $('#exam-cancel-edit').hidden = false;
+    $('#exam-form-title').textContent = 'Alterar prova do calendário'; $('#exam-save-button').textContent = 'Salvar alteração'; $('#exam-cancel-edit').hidden = false;
     form.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' }); form.elements.date.focus();
   }
   const deleteButton = event.target.closest('[data-delete-exam]');
@@ -640,8 +698,8 @@ document.addEventListener('click', async event => {
     catch (error) { $('#exam-form .panel-message').textContent = `Erro ao excluir: ${error.message}`; deleteButton.disabled = false; }
   }
 });
-$('#exam-cancel-edit').addEventListener('click', () => { const form = $('#exam-form'); form.reset(); form.elements.id.value = ''; $('#exam-form-title').textContent = 'Cadastrar avaliação'; $('#exam-save-button').textContent = 'Cadastrar no calendário'; $('#exam-cancel-edit').hidden = true; });
-new MutationObserver(() => { const message = $('#exam-form .panel-message').textContent; if (message.includes('cadastrada')) { $('#exam-form-title').textContent = 'Cadastrar avaliação'; $('#exam-save-button').textContent = 'Cadastrar no calendário'; $('#exam-cancel-edit').hidden = true; } }).observe($('#exam-form .panel-message'), { childList: true, subtree: true });
+$('#exam-cancel-edit').addEventListener('click', () => { const form = $('#exam-form'); form.reset(); form.elements.id.value = ''; $('#exam-form-title').textContent = 'Cadastrar data no calendário'; $('#exam-save-button').textContent = 'Cadastrar no calendário'; $('#exam-cancel-edit').hidden = true; });
+new MutationObserver(() => { const message = $('#exam-form .panel-message').textContent; if (message.includes('cadastrada')) { $('#exam-form-title').textContent = 'Cadastrar data no calendário'; $('#exam-save-button').textContent = 'Cadastrar no calendário'; $('#exam-cancel-edit').hidden = true; } }).observe($('#exam-form .panel-message'), { childList: true, subtree: true });
 $('#ranking-refresh-button').addEventListener('click', async event => {
   const button = event.currentTarget, message = $('#ranking-updated-at');
   button.disabled = true; button.textContent = 'Atualizando...'; message.textContent = 'Recalculando o ranking com os dados atuais...';
