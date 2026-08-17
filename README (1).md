@@ -1,11 +1,7 @@
-# Imagens institucionais
+# Banco de dados
 
-Esta pasta contém o escudo oficial da EFAS usado no site e pode receber outras imagens autorizadas.
+O sistema cria automaticamente `notas.db` nesta pasta durante a primeira inicialização.
 
-Sugestões:
+O banco oficial não acompanha este pacote para evitar a substituição de discentes, senhas, notas e calendário já armazenados no disco persistente do Render.
 
-- `logo-oficial.webp` — logotipo com fundo transparente;
-- `fachada.webp` — imagem institucional otimizada;
-- `brasao.webp` — brasão oficial, se autorizado.
-
-Prefira WebP, comprima os arquivos antes da publicação e sempre inclua um texto alternativo descritivo no HTML. Não utilize imagens sem autorização de uso.
+Ao atualizar o serviço existente, mantenha o disco montado em `/opt/render/project/src/data`.
