@@ -116,22 +116,16 @@ async function confirmPdfImport(event){
       .filter(row=>row.querySelector('.pdf-import-check')?.checked)
       .map(row=>{const entry={subject_id:row.dataset.subjectId};row.querySelectorAll('[data-field]').forEach(input=>entry[input.dataset.field]=input.value);return entry});
     if(!entries.length)throw new Error('Marque pelo menos uma disciplina na prévia antes de salvar.');
-    const student=cache.students.find(item=>String(item.id)===String(student_id));
-    let saved=0;
-    for(const entry of entries){
-      message.textContent=`Salvando ${saved+1} de ${entries.length}: aguarde...`;
-      await saveScoreResult({
-        student_id,
-        ...entry,
-        observation:student?.observation||''
-      });
-      saved+=1;
-      message.textContent=`Salvando notas: ${saved} de ${entries.length} concluída(s).`;
-    }
+    message.textContent=`Salvando ${entries.length} disciplina(s)...`;
+    const result=await api('/api/admin/student-scores/import',{method:'POST',body:JSON.stringify({action:'apply',student_id,entries})});
+    const saved=Number(result.saved||entries.length);
     const success=`Salvo com sucesso: ${saved} disciplina(s) lançada(s).`;
     message.textContent=success;formMessage.textContent=`Notas salvas para o discente selecionado. ${success}`;
     button.textContent='Notas salvas';pdfImportStudentId=student_id;
     $('#student-score-pdf').value='';
+    if(result.user_action||(result.logs||[]).some(item=>String(item.level).toLowerCase()==='warning')){
+      showAdminFeedback({title:'Notas salvas, com avisos',eyebrow:'Conferência',message:success,userAction:result.user_action||'',logs:result.logs||[],tone:'warning'});
+    }
     try{await loadData();$('#pdf-score-student').value=student_id}
     catch{formMessage.textContent=`${success} A tela não conseguiu atualizar automaticamente; clique em Atualizar para conferir.`}
     $('#student-pdf-preview').scrollIntoView({behavior:'smooth',block:'center'});
