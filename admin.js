@@ -220,7 +220,7 @@ const baseLoadData=loadData;loadData=async function(){await baseLoadData();rende
 dashboard=function(user){if(!document.body.classList.contains('admin-dashboard-page')){enforceAdminGroups();setupAdminTabs();setupStudentControlTab();setupNotesVisualLayout()}setupAdminSettings(user);$('#login-panel').hidden=true;$('#dashboard').hidden=false;$('#initial-warning').hidden=!user.must_change_password;loadData()};
 
 function renderProportionalRanking(){
-  const container=$('#ranking-data'),rows=cache.ranking||[];if(!container)return;
+  const container=$('#ranking-data'),rows=cache.ranking||[];if(!container||isDashboardPage())return;
   container.innerHTML=rows.length?`<div class="table-wrap"><table class="grade-table"><thead><tr><th>Posição</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th><th>Aproveitamento</th><th>Observação</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${row.position}º</strong></td><td><button class="student-name-button" type="button" data-student-details="${esc(row.id)}" aria-label="Ver notas lançadas de ${esc(row.name)}">${esc(row.name)}</button><small class="table-sub">${esc(row.id)} • Clique no nome para consultar</small></td><td>${fmt(row.points)}</td><td>${fmt(row.distributed)}</td><td><strong>${fmt(row.average)}</strong></td><td>${fmt(row.percentage)}%</td><td>${esc(row.observation)||'—'}</td></tr>`).join('')}</tbody></table></div>`:'<p>Nenhum discente cadastrado.</p>';
 }
 const loadedWithHome=loadData;loadData=async function(){await loadedWithHome();renderProportionalRanking()};
