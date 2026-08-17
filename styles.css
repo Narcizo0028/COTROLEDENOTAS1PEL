@@ -199,7 +199,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .compact-grid { grid-template-columns: .7fr 1fr 1.45fr; }
 .admin-panel textarea,.admin-panel select { width:100%; padding:9px 11px; border:1px solid #bbb6a7; border-radius:6px; background:#fff; font:inherit; }
 .score-fields,.schedule-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
-.schedule-grid { grid-template-columns:repeat(5,1fr); }
+.schedule-grid { grid-template-columns:repeat(4,1fr); }
+.table-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.table-actions .button { min-height:36px; padding:7px 11px; font-size:.78rem; }
 .score-rule { margin-bottom:15px; padding:10px; color:#40391f; background:#f4edda; border-left:3px solid var(--gold); font-size:.83rem; }
 .table-sub { display:block; color:var(--muted); font-size:.72rem; }
 .ranking-summary { display:flex; gap:28px; text-align:right; }.ranking-summary span,.ranking-summary strong { display:block; }.ranking-summary span { color:var(--muted); font-size:.72rem; text-transform:uppercase; }.ranking-summary strong { font:700 1.45rem Georgia,serif; }

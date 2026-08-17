@@ -121,7 +121,7 @@ function renderExams(subject='todas'){
   const items=subject==='todas'?exams:exams.filter(x=>x.subject===subject);
   examList.innerHTML=items.length?items.map(x=>{
     const d=dateParts(x.date);
-    return`<article class="exam-card"><div class="exam-date"><strong>${d.day}</strong><span>${d.month}</span></div><div class="exam-details"><h3>${esc(x.subject)}</h3><p>${esc(x.time)} • ${esc(x.place)}</p></div><span class="exam-type">${esc(x.type)}</span></article>`;
+    return`<article class="exam-card"><div class="exam-date"><strong>${d.day}</strong><span>${d.month}</span></div><div class="exam-details"><h3>${esc(x.subject)}</h3><p>${[x.time,x.place].filter(Boolean).map(esc).join(' • ')}</p></div><span class="exam-type">${esc(x.type)}</span></article>`;
   }).join(''):'<p class="empty-state">Nenhuma prova cadastrada.</p>';
 }
 

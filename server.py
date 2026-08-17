@@ -610,7 +610,7 @@ class Handler(SimpleHTTPRequestHandler):
         path=urlsplit(self.path).path
         if path=="/api/exams":
             with connect() as db:
-                rows=db.execute("SELECT date,subject,time,place,type FROM exams ORDER BY date,time").fetchall()
+                rows=db.execute("SELECT id,date,subject,time,place,type FROM exams ORDER BY date,time,id").fetchall()
                 self.output([dict(row) for row in rows if exam_is_visible(row)])
             return
         if path=="/api/admin/session":
@@ -903,7 +903,19 @@ class Handler(SimpleHTTPRequestHandler):
                     password=data.get("password","")
                     if len(password)<12:raise ValueError("A senha deve possuir pelo menos 12 caracteres.")
                     salt,digest=password_hash(password);db.execute("UPDATE admins SET salt=?,password_hash=?,must_change=0 WHERE username=?",(salt,digest,user))
-                elif self.path=="/api/admin/exams":db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",tuple(str(data.get(k,"")).strip() for k in ("date","subject","time","place","type")))
+                elif self.path=="/api/admin/exams":
+                    date,subject,exam_time,exam_type=(str(data.get(key,"")).strip() for key in ("date","subject","time","type"))
+                    if not date or not subject or not exam_time or not exam_type:raise ValueError("Preencha data, disciplina, horário e tipo.")
+                    db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",(date,subject,exam_time,"",exam_type))
+                elif self.path=="/api/admin/exams/update":
+                    exam_id=int(data.get("id") or 0);date,subject,exam_time,exam_type=(str(data.get(key,"")).strip() for key in ("date","subject","time","type"))
+                    if not exam_id or not date or not subject or not exam_time or not exam_type:raise ValueError("Preencha data, disciplina, horário e tipo.")
+                    if not db.execute("SELECT 1 FROM exams WHERE id=?",(exam_id,)).fetchone():raise ValueError("Prova não encontrada no calendário.")
+                    db.execute("UPDATE exams SET date=?,subject=?,time=?,place='',type=? WHERE id=?",(date,subject,exam_time,exam_type,exam_id))
+                elif self.path=="/api/admin/exams/delete":
+                    exam_id=int(data.get("id") or 0)
+                    if not exam_id:raise ValueError("Prova inválida.")
+                    if db.execute("DELETE FROM exams WHERE id=?",(exam_id,)).rowcount!=1:raise ValueError("Prova não encontrada no calendário.")
                 elif self.path=="/api/admin/student":
                     sid=str(data.get("student_id","")).strip(); code=str(data.get("access_code","")).strip()
                     if not sid or not data.get("name") or len(code)<6:raise ValueError("Preencha matrícula, nome e código com pelo menos 6 caracteres.")
