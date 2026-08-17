@@ -5,6 +5,10 @@ const VIEW_IDS=new Set(['calendario','boletim','lancamento','ranking','senha']);
 const DEFAULT_VIEW='boletim';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const converterNumero=valor=>{if(typeof valor==='number'&&!Number.isNaN(valor))return valor;return Number(String(valor??0).replace(/\./g,'').replace(',','.'))||0};
+const calcularMedia=(pontosObtidos,pontosDistribuidos)=>{const obtidos=converterNumero(pontosObtidos),distribuidos=converterNumero(pontosDistribuidos);if(distribuidos<=0)return 0;const media=Math.min((obtidos/distribuidos)*10,10);return Math.floor(media*100)/100};
+const formatarMedia=media=>Number(media).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtMedia=row=>formatarMedia(calcularMedia(row?.points,row?.distributed));
 const menuButton=document.querySelector('.menu-toggle');
 const menu=document.querySelector('.main-nav');
 const navBackdrop=document.querySelector('#nav-backdrop');
@@ -121,7 +125,7 @@ function renderExams(subject='todas'){
   const items=subject==='todas'?exams:exams.filter(x=>x.subject===subject);
   examList.innerHTML=items.length?items.map(x=>{
     const d=dateParts(x.date);
-    return`<article class="exam-card"><div class="exam-date"><strong>${d.day}</strong><span>${d.month}</span></div><div class="exam-details"><h3>${esc(x.subject)}</h3><p>${[x.time,x.place].filter(Boolean).map(esc).join(' • ')}</p></div><span class="exam-type">${esc(x.type)}</span></article>`;
+    return`<article class="exam-card"><div class="exam-date"><strong>${d.day}</strong><span>${d.month}</span></div><div class="exam-details"><h3>${esc(x.subject)}</h3><p>${esc(x.time)} • ${esc(x.place)}</p></div><span class="exam-type">${esc(x.type)}</span></article>`;
   }).join(''):'<p class="empty-state">Nenhuma prova cadastrada.</p>';
 }
 
@@ -191,13 +195,15 @@ function scoreCell(apt,value){
 }
 
 function isDefesaPessoal(subject){
-  return /defesa pessoal/i.test(String(subject||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''));
+  if(subject&&typeof subject==='object'&&subject.grading_mode==='defesa')return true;
+  const name=typeof subject==='object'?(subject?.subject||subject?.name||''):subject;
+  return/defesa pessoal/i.test(String(name).normalize('NFD').replace(/[\u0300-\u036f]/g,''));
 }
 
 function renderReport(student){
   const r=student.ranking;
   const rows=student.scores.length?student.scores.map(x=>{
-    const defesa=isDefesaPessoal(x.subject);
+    const defesa=isDefesaPessoal(x);
     const total=(defesa?0:(x.exam1||0))+(x.exam2||0)+(x.work||0);
     const apt=x.grading_mode==='apt';
     const totalLabel=apt?esc(x.status||'—'):fmt(total);
@@ -220,8 +226,7 @@ function renderReport(student){
       <div class="ranking-summary">
         <div><span>Colocação</span><strong>${r.position}º</strong></div>
         <div><span>Pontos</span><strong>${fmt(r.points)} / ${fmt(r.distributed)}</strong></div>
-        <div><span>Média</span><strong>${fmt(r.average)}</strong></div>
-        <div><span>Aproveitamento</span><strong>${fmt((Number(r.points)||0)/(Number(r.distributed)||1)*100)}%</strong></div>
+        <div><span>Média</span><strong>${fmtMedia(r)}</strong></div>
       </div>
     </div>
     ${student.observation?`<div class="student-observation"><strong>Observação da administração</strong><p>${esc(student.observation)}</p></div>`:''}
@@ -267,12 +272,12 @@ function renderReport(student){
 function renderStudentRanking(items=[]){
   if(!studentRankingList)return;
   studentRankingList.innerHTML=items.length?`<div class="table-wrap student-ranking-desktop"><table class="grade-table student-ranking-table">
-    <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th><th>Aproveitamento</th></tr></thead>
-    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmt(item.average)}</td><td>${fmt((Number(item.points)||0)/(Number(item.distributed)||1)*100)}%</td></tr>`).join('')}</tbody>
+    <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th></tr></thead>
+    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${fmtMedia(item)}</td></tr>`).join('')}</tbody>
   </table></div><div class="student-ranking-mobile">${items.map(item=>`<article class="ranking-mobile-card">
     <div class="ranking-mobile-position"><span>Colocação</span><strong>${item.position}º</strong></div>
     <div class="ranking-mobile-identity"><span>Discente</span><strong class="ranking-student-name" aria-label="Identidade protegida">████████████</strong></div>
-    <dl><div><dt>Pontos obtidos</dt><dd>${fmt(item.points)}</dd></div><div><dt>Pontos distribuídos</dt><dd>${fmt(item.distributed)}</dd></div><div><dt>Média</dt><dd>${fmt(item.average)}</dd></div><div><dt>Aproveitamento</dt><dd>${fmt((Number(item.points)||0)/(Number(item.distributed)||1)*100)}%</dd></div></dl>
+    <dl><div><dt>Pontos obtidos</dt><dd>${fmt(item.points)}</dd></div><div><dt>Pontos distribuídos</dt><dd>${fmt(item.distributed)}</dd></div><div><dt>Média</dt><dd>${fmtMedia(item)}</dd></div></dl>
   </article>`).join('')}</div>`:'<p class="empty-state">Nenhum discente disponível no ranking.</p>';
 }
 

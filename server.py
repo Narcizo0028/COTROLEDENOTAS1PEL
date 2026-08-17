@@ -5,9 +5,8 @@ from html import escape as html_escape
 from pathlib import Path
 from urllib.parse import urlsplit
 from datetime import datetime, timedelta
-from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from zoneinfo import ZoneInfo
-import base64, binascii, difflib, hashlib, hmac, io, json, os, re, secrets, sqlite3, time, unicodedata
+import base64, binascii, difflib, hashlib, hmac, io, json, math, os, re, secrets, sqlite3, time, unicodedata
 
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "notas.db"
@@ -161,13 +160,19 @@ def assert_db_writable(db):
         db.commit()
     except sqlite3.Error as error:
         raise sqlite3.Error("Não foi possível gravar no armazenamento de notas. Confira o disco permanente do serviço.") from error
-    if os.environ.get("RENDER") and "/opt/render/project/src/data" not in DB.resolve().as_posix():
+    if os.environ.get("RENDER") and "/opt/render/project/src/data" not in str(DB).resolve().as_posix():
         raise sqlite3.Error("O armazenamento de notas não está no disco permanente. As notas podem sumir ao reiniciar o site.")
 
 def is_defesa_pessoal(subject):
-    """Identifica a disciplina mesmo se o texto variar em acentuação."""
+    """Identifica Defesa Pessoal Policial: AVF 6 pontos + Trabalho 4 pontos, sem AVC."""
     if not subject:
         return False
+    if not isinstance(subject, str):
+        try:
+            if subject["grading_mode"] == "defesa":
+                return True
+        except (KeyError, TypeError):
+            pass
     if isinstance(subject, str):
         name = subject
     else:
@@ -177,6 +182,35 @@ def is_defesa_pessoal(subject):
             name = subject["subject"]
     name = unicodedata.normalize("NFKD", str(name or "")).encode("ascii", "ignore").decode().casefold()
     return "defesa pessoal" in name
+
+def converter_numero(valor):
+    if isinstance(valor, (int, float)):
+        number = float(valor)
+        return 0.0 if math.isnan(number) or math.isinf(number) else number
+    texto = str(valor or "0").strip()
+    if not texto:
+        return 0.0
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    try:
+        number = float(texto)
+    except ValueError:
+        return 0.0
+    return 0.0 if math.isnan(number) or math.isinf(number) else number
+
+def calcular_media(pontos_obtidos, pontos_distribuidos):
+    obtidos = converter_numero(pontos_obtidos)
+    distribuidos = converter_numero(pontos_distribuidos)
+    if distribuidos <= 0:
+        return 0.0
+    media = min((obtidos / distribuidos) * 10, 10.0)
+    return math.floor(media * 100) / 100
+
+def formatar_media(valor):
+    numero = math.floor(converter_numero(valor) * 100) / 100
+    inteiro = int(numero)
+    centavos = int((numero - inteiro) * 100 + 1e-9)
+    return f"{inteiro},{centavos:02d}"
 
 def parse_grade_value(value, maximum, label, blank_as_zero=True):
     # Para lançamento manual, campo em branco representa a mesma nota que zero.
@@ -295,8 +329,9 @@ def initialize():
             salt,digest=password_hash(INITIAL_PASSWORD); db.execute("INSERT INTO admins VALUES(?,?,?,1)",(USER,salt,digest))
         db.executemany("INSERT INTO subjects(hours,name,exam_count) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET hours=excluded.hours,exam_count=excluded.exam_count",SUBJECTS)
         db.execute("UPDATE subjects SET grading_mode='normal'")
-        db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Instrumentos de Menor Potencial Ofensivo','Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
+        db.execute("UPDATE subjects SET grading_mode='apt' WHERE name IN ('Saúde Integral','Armamento e Tiro Policial','APMI – Atividades Policiais e Militares Interdisciplinares')")
         db.execute("UPDATE subjects SET grading_mode='taf' WHERE name='Educação Física Militar'")
+        db.execute("UPDATE subjects SET grading_mode='defesa' WHERE name='Defesa Pessoal Policial'")
         calendar_version=db.execute("SELECT value FROM settings WHERE key='official_calendar_version'").fetchone()
         if not calendar_version:
             db.execute("DELETE FROM exams")
@@ -445,74 +480,30 @@ def parse_student_scores_pdf(raw, subjects, student_id):
     if not validated:raise ValueError(f'Nenhuma nota válida foi encontrada para a matrícula {student_id}.')
     return sorted(validated,key=lambda item:item['subject'])
 
-def converter_numero(valor):
-    """Converte valores numéricos, inclusive textos no formato brasileiro."""
-    if isinstance(valor, Decimal):
-        return valor
-    if isinstance(valor, (int, float)):
-        try:
-            return Decimal(str(valor))
-        except (InvalidOperation, ValueError):
-            return Decimal("0")
-
-    texto = str(valor if valor is not None else "").strip()
-    if not texto:
-        return Decimal("0")
-    # Quando há vírgula, o ponto é separador de milhar; sem vírgula, o ponto é decimal.
-    texto = texto.replace(".", "").replace(",", ".") if "," in texto else texto
-    try:
-        return Decimal(texto)
-    except InvalidOperation:
-        return Decimal("0")
-
-def calcular_media(pontos_obtidos, pontos_distribuidos):
-    """Retorna a média proporcional (0 a 10), mantendo precisão para a classificação."""
-    obtidos = converter_numero(pontos_obtidos)
-    distribuidos = converter_numero(pontos_distribuidos)
-    if not obtidos.is_finite() or not distribuidos.is_finite() or distribuidos <= 0:
-        return 0.0
-    media = (obtidos / distribuidos) * Decimal("10")
-    return float(max(Decimal("0"), min(Decimal("10"), media)))
-
-def calcular_aproveitamento(pontos_obtidos, pontos_distribuidos):
-    """Retorna o aproveitamento proporcional em percentual, sem arredondar para o ranking."""
-    obtidos=converter_numero(pontos_obtidos);distribuidos=converter_numero(pontos_distribuidos)
-    if not obtidos.is_finite() or not distribuidos.is_finite() or distribuidos<=0:return 0.0
-    return float(max(Decimal("0"),min(Decimal("100"),(obtidos/distribuidos)*Decimal("100"))))
-
 def ranking(db):
     rows = db.execute("""SELECT s.id,s.name,s.rank,s.observation,
       COALESCE(SUM(CASE
         WHEN sub.grading_mode='apt' THEN 0
-        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN COALESCE(sc.exam2,0)+COALESCE(sc.work,0)
+        WHEN sub.grading_mode='defesa' THEN COALESCE(sc.exam2,0)+COALESCE(sc.work,0)
         ELSE COALESCE(sc.exam1,0)+COALESCE(sc.exam2,0)+COALESCE(sc.work,0) END),0) points,
       COALESCE(SUM(
         CASE WHEN sub.grading_mode='apt' THEN 0
-        WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1 IS NOT NULL THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2 IS NOT NULL THEN 3 ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 4 ELSE 0 END)
-        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN (CASE WHEN sc.exam2 IS NOT NULL THEN 6 ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 4 ELSE 0 END)
-        ELSE (CASE WHEN sc.exam1 IS NOT NULL AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2 IS NOT NULL THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 3 ELSE 0 END) END
-      ),0) distributed
+        WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN 3 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
+        WHEN sub.grading_mode='defesa' THEN (CASE WHEN sc.exam2>0 THEN 6 ELSE 0 END)+(CASE WHEN sc.work>0 THEN 4 ELSE 0 END)
+        ELSE (CASE WHEN sc.exam1>0 AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2>0 THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work>0 THEN 3 ELSE 0 END) END
+      ),0) distributed,
+      COUNT(CASE WHEN sub.grading_mode!='apt' AND (sc.exam1>0 OR sc.exam2>0 OR sc.work>0) THEN 1 END) subjects_count
       FROM students s LEFT JOIN scores sc ON sc.student_id=s.id LEFT JOIN subjects sub ON sub.id=sc.subject_id
-      GROUP BY s.id""").fetchall()
-    result=[]
-    for row in rows:
-        item=dict(row)
-        item["average"]=calcular_media(item["points"], item["distributed"])
-        item["percentage"]=calcular_aproveitamento(item["points"], item["distributed"])
-        result.append(item)
-
-    # O ranking usa a média numérica, jamais sua representação formatada.
-    result.sort(key=lambda item: (-item["average"], -item["points"], -item["distributed"], str(item["name"]).casefold()))
-    last=None; position=0
-    for index,row in enumerate(result,1):
-        tie=(row["average"],row["points"],row["distributed"])
-        if last is None or tie!=last: position=index
-        last=tie;row["position"]=position
+      GROUP BY s.id ORDER BY points DESC,s.name""").fetchall()
+    result=[]; last=None; position=0
+    for index,row in enumerate(rows,1):
+        if last is None or row["points"]<last: position=index
+        last=row["points"]; item=dict(row); item["position"]=position; item["average"]=calcular_media(row["points"], row["distributed"]); result.append(item)
     return result
 
 def student_ranking_view(rows):
     """Expõe somente colocação e pontuação, sem qualquer dado identificador."""
-    return [{key:item[key] for key in ("position","points","distributed","average","percentage")} for item in rows]
+    return [{key:item[key] for key in ("position","points","distributed","average")} for item in rows]
 
 def notes_report_pdf(db):
     """Gera o relatório administrativo de lançamentos em PDF."""
@@ -549,12 +540,12 @@ def notes_report_pdf(db):
         table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#8a6b25')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(3,1),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#c9c2b2')),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f5f2e9')]),('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),3)]));story.append(table)
     else:story.append(Paragraph('Nenhum lançamento de nota foi encontrado.',styles['Normal']))
     distributed_rows=sorted(ranking(db),key=lambda item:str(item['name']).casefold())
-    story.append(Paragraph('Pontos distribuídos por discente',section_title))
+    story.append(Paragraph('Resumo por discente',section_title))
     if distributed_rows:
-        distributed_data=[[Paragraph('Discente',head),Paragraph('Matrícula',head),Paragraph('Pontos distribuídos',head)]]
+        distributed_data=[[Paragraph('Discente',head),Paragraph('Matrícula',head),Paragraph('Pontos obtidos',head),Paragraph('Pontos distribuídos',head),Paragraph('Média',head)]]
         for item in distributed_rows:
-            distributed_data.append([Paragraph(str(item['name']),cell),Paragraph(str(item['id']),cell),Paragraph(fmt(item['distributed']),cell)])
-        distributed_table=Table(distributed_data,colWidths=[90*mm,35*mm,42*mm],repeatRows=1,hAlign='LEFT')
+            distributed_data.append([Paragraph(str(item['name']),cell),Paragraph(str(item['id']),cell),Paragraph(fmt(item['points']),cell),Paragraph(fmt(item['distributed']),cell),Paragraph(formatar_media(calcular_media(item['points'],item['distributed'])),cell)])
+        distributed_table=Table(distributed_data,colWidths=[68*mm,28*mm,28*mm,28*mm,20*mm],repeatRows=1,hAlign='LEFT')
         distributed_table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#8a6b25')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,1),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#c9c2b2')),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f5f2e9')]),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
         story.append(distributed_table)
     else:story.append(Paragraph('Nenhum discente cadastrado.',styles['Normal']))
@@ -566,11 +557,13 @@ def notes_report_pdf(db):
 def validate_deployment_files():
     """Interrompe a inicialização se arquivos essenciais tiverem sido trocados no envio."""
     signatures = {
+        "server.py": '"""Servidor local EFAS',
         "admin.html": "<!DOCTYPE html>",
         "index.html": "<!DOCTYPE html>",
         "admin.js": "const $=",
         "script.js": "let exams=",
         "render.yaml": "services:",
+        "requirements.txt": "reportlab>=",
     }
     for filename, expected in signatures.items():
         path = ROOT / filename
@@ -617,7 +610,7 @@ class Handler(SimpleHTTPRequestHandler):
         path=urlsplit(self.path).path
         if path=="/api/exams":
             with connect() as db:
-                rows=db.execute("SELECT id,date,subject,time,place,type FROM exams ORDER BY date,time,id").fetchall()
+                rows=db.execute("SELECT date,subject,time,place,type FROM exams ORDER BY date,time").fetchall()
                 self.output([dict(row) for row in rows if exam_is_visible(row)])
             return
         if path=="/api/admin/session":
@@ -907,36 +900,14 @@ class Handler(SimpleHTTPRequestHandler):
                     db.commit()
                     self.output({"ok":True,"student_subject_restriction":student_subject_restriction(db)});return
                 elif self.path=="/api/admin/password":
-                    current_password=str(data.get("current_password", ""));password=str(data.get("password", ""));confirmation=str(data.get("confirmation", ""))
-                    current=db.execute("SELECT salt,password_hash FROM admins WHERE username=?",(user,)).fetchone()
-                    if not current or not verify(current_password,current["salt"],current["password_hash"]):raise ValueError("A senha atual está incorreta.")
-                    if password!=confirmation:raise ValueError("A confirmação da nova senha não confere.")
-                    if len(password)<12:raise ValueError("A nova senha deve possuir pelo menos 12 caracteres.")
-                    if verify(password,current["salt"],current["password_hash"]):raise ValueError("Escolha uma senha diferente da atual.")
+                    password=data.get("password","")
+                    if len(password)<12:raise ValueError("A senha deve possuir pelo menos 12 caracteres.")
                     salt,digest=password_hash(password);db.execute("UPDATE admins SET salt=?,password_hash=?,must_change=0 WHERE username=?",(salt,digest,user))
-                elif self.path=="/api/admin/exams":
-                    date,subject,exam_time,exam_type=(str(data.get(key,"")).strip() for key in ("date","subject","time","type"))
-                    if not date or not subject or not exam_time or not exam_type:raise ValueError("Preencha data, disciplina, horário e tipo.")
-                    db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",(date,subject,exam_time,"",exam_type))
-                elif self.path=="/api/admin/exams/update":
-                    exam_id=int(data.get("id") or 0);date,subject,exam_time,exam_type=(str(data.get(key,"")).strip() for key in ("date","subject","time","type"))
-                    if not exam_id or not date or not subject or not exam_time or not exam_type:raise ValueError("Preencha data, disciplina, horário e tipo.")
-                    if not db.execute("SELECT 1 FROM exams WHERE id=?",(exam_id,)).fetchone():raise ValueError("Prova não encontrada no calendário.")
-                    db.execute("UPDATE exams SET date=?,subject=?,time=?,place='',type=? WHERE id=?",(date,subject,exam_time,exam_type,exam_id))
-                elif self.path=="/api/admin/exams/delete":
-                    exam_id=int(data.get("id") or 0)
-                    if not exam_id:raise ValueError("Prova inválida.")
-                    if db.execute("DELETE FROM exams WHERE id=?",(exam_id,)).rowcount!=1:raise ValueError("Prova não encontrada no calendário.")
+                elif self.path=="/api/admin/exams":db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",tuple(str(data.get(k,"")).strip() for k in ("date","subject","time","place","type")))
                 elif self.path=="/api/admin/student":
-                    sid=str(data.get("student_id","")).strip();code=str(data.get("access_code","")).strip();name=str(data.get("name","")).strip();rank=str(data.get("rank","")).strip()
-                    if not sid or not name or not rank:raise ValueError("Informe matrícula, nome e posto/graduação.")
-                    existing=db.execute("SELECT id FROM students WHERE id=?",(sid,)).fetchone()
-                    if not existing and (not code or len(code)<6):raise ValueError("Informe um código individual com pelo menos 6 caracteres para o novo discente.")
-                    if code and len(code)<6:raise ValueError("O código individual deve possuir pelo menos 6 caracteres.")
-                    if existing and not code:
-                        db.execute("UPDATE students SET name=?,rank=? WHERE id=?",(name,rank,sid))
-                    else:
-                        salt,digest=password_hash(code);db.execute("INSERT INTO students(id,name,rank,salt,access_hash,observation,must_change) VALUES(?,?,?,?,?,'',1) ON CONFLICT(id) DO UPDATE SET name=excluded.name,rank=excluded.rank,salt=excluded.salt,access_hash=excluded.access_hash,must_change=1",(sid,name,rank,salt,digest))
+                    sid=str(data.get("student_id","")).strip(); code=str(data.get("access_code","")).strip()
+                    if not sid or not data.get("name") or len(code)<6:raise ValueError("Preencha matrícula, nome e código com pelo menos 6 caracteres.")
+                    salt,digest=password_hash(code);db.execute("INSERT INTO students(id,name,rank,salt,access_hash,observation,must_change) VALUES(?,?,?,?,?,'',1) ON CONFLICT(id) DO UPDATE SET name=excluded.name,rank=excluded.rank,salt=excluded.salt,access_hash=excluded.access_hash,must_change=1",(sid,str(data.get("name","")).strip(),str(data.get("rank","")).strip(),salt,digest))
                 elif self.path=="/api/admin/observation/save":
                     sid=str(data.get("student_id","")).strip();observation=str(data.get("observation","")).strip()
                     if not sid or not db.execute("SELECT 1 FROM students WHERE id=?",(sid,)).fetchone():raise ValueError("Selecione um discente valido.")
@@ -978,7 +949,7 @@ class Handler(SimpleHTTPRequestHandler):
                     if (expected_empty and confirmed) or (not expected_empty and not score_matches(confirmed,exam1,exam2,work,status)):
                         raise sqlite3.Error('A conferência exata da nota gravada não foi concluída.')
                 elif self.path=="/api/admin/logout":
-                    cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);self.output({"ok":True},cookie="efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");return
+                    cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);secure="; Secure" if COOKIE_SECURE else "";self.output({"ok":True},cookie=f"efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0{secure}");return
                 else:self.output({"error":"Rota inexistente."},404);return
             self.output({"ok":True})
         except (ValueError,TypeError,sqlite3.Error) as error:self.output({"error":str(error)},400)

@@ -6,13 +6,14 @@ PACOTE CORRIGIDO PARA O RENDER
 4. Não copie o conteúdo de um arquivo para outro.
 5. Confirme no GitHub:
    - requirements.txt começa com: reportlab>=4.0,<5
+   - server.py começa com: """Servidor local EFAS
    - render.yaml começa com: services:
    - admin.html começa com: <!DOCTYPE html>
    - admin.js começa com: const $=
 6. No Render, use Manual Deploy > Deploy latest commit.
 7. Abra o painel pela URL terminada em /admin.html, nunca /admin.js.
 8. Em Settings, confirme o Build Command:
-   python -m pip install "reportlab>=4.0,<5" "pdfplumber>=0.11,<1"
+   python -m pip install -r requirements.txt
 
 Arquivos que não devem ser enviados:
 - notas.db, notas.db-shm ou notas.db-wal

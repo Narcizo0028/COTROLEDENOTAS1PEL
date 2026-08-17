@@ -30,10 +30,11 @@ Nas execuções seguintes, o banco já contém o administrador e a variável da 
 
 - Disciplinas com uma avaliação: AVF de 7 pontos e trabalho de 3 pontos; o campo AVC permanece bloqueado.
 - Disciplinas com duas avaliações: AVC de 3 pontos, AVF de 4 pontos e trabalho de 3 pontos.
+- Defesa Pessoal Policial: AVF de 6 pontos e trabalho de 4 pontos; o campo AVC permanece bloqueado.
 - Saúde Integral, Armamento e Tiro Policial e APMI: resultado `Apto` ou `Inapto`, fora da pontuação numérica do ranking.
 - Educação Física Militar: 1º TAF de 3 pontos, 2º TAF de 3 pontos e 3º TAF de 4 pontos.
 
-O ranking completo é exclusivo do administrador. Cada discente recebe somente sua própria colocação, notas e observação individual.
+O ranking completo é exclusivo do administrador. Cada discente recebe somente sua própria colocação, notas e observação individual. A **média** representa o aproveitamento de 0 a 10, calculado como `(pontos obtidos ÷ pontos distribuídos) × 10`, truncado em duas casas decimais sem arredondamento.
 
 Após consultar o boletim pela primeira vez, o discente pode substituir a senha temporária fornecida pela administração. A troca exige uma sessão autenticada, confirmação da nova senha e no mínimo 8 caracteres. A opção permanece disponível no boletim para mudanças futuras; as senhas continuam armazenadas somente como hash PBKDF2 com salt.
 
