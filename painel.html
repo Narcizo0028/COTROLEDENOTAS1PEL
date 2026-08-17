@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>Administração | CFS — 1º Pelotão</title>
-  <link rel="stylesheet" href="styles.css?v=20260801-admin-reorganizado-v3">
+  <link rel="stylesheet" href="styles.css?v=20260817-admin-shell">
 </head>
 <body class="admin-page admin-dashboard-page">
   <main id="login-panel" class="admin-login-shell">
@@ -36,14 +36,11 @@
         <span class="sidebar-brand-copy"><strong>Controle de Notas</strong><small>Painel administrativo</small></span>
       </div>
       <nav class="admin-sidebar-nav">
-        <button class="admin-nav-item active" type="button" data-admin-view="overview"><span class="admin-nav-icon" aria-hidden="true">▦</span><span>Visão geral</span></button>
-        <button class="admin-nav-item" type="button" data-admin-view="students"><span class="admin-nav-icon" aria-hidden="true">♙</span><span>Discentes</span></button>
-        <button class="admin-nav-item" type="button" data-admin-view="subjects"><span class="admin-nav-icon" aria-hidden="true">◇</span><span>Disciplinas</span></button>
-        <button class="admin-nav-item" type="button" data-admin-view="grades"><span class="admin-nav-icon" aria-hidden="true">✎</span><span>Lançamento de notas</span></button>
-        <button class="admin-nav-item" type="button" data-admin-view="calendar"><span class="admin-nav-icon" aria-hidden="true">◷</span><span>Calendário de avaliações</span></button>
-        <button class="admin-nav-item" type="button" data-admin-view="ranking"><span class="admin-nav-icon" aria-hidden="true">#</span><span>Ranking</span></button>
-        <button class="admin-nav-item" type="button" data-admin-view="reports"><span class="admin-nav-icon" aria-hidden="true">▤</span><span>Relatórios</span></button>
-        <button class="admin-nav-item" type="button" data-admin-view="settings"><span class="admin-nav-icon" aria-hidden="true">⚙</span><span>Configurações</span></button>
+        <button class="admin-nav-item active" type="button" data-admin-view="students" aria-pressed="true"><span class="admin-nav-icon" aria-hidden="true">♙</span><span>Discentes</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="grades" aria-pressed="false"><span class="admin-nav-icon" aria-hidden="true">✎</span><span>Lançamento de notas</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="calendar" aria-pressed="false"><span class="admin-nav-icon" aria-hidden="true">▦</span><span>Calendário de provas</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="ranking" aria-pressed="false"><span class="admin-nav-icon" aria-hidden="true">★</span><span>Ranking</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="settings" aria-pressed="false"><span class="admin-nav-icon" aria-hidden="true">⚙</span><span>Configurações</span></button>
       </nav>
       <div class="admin-sidebar-footer">
         <button id="sidebar-logout-button" class="admin-nav-item admin-nav-logout" type="button"><span class="admin-nav-icon" aria-hidden="true">↪</span><span>Sair</span></button>
@@ -54,7 +51,7 @@
       <header class="admin-top-header">
         <div class="admin-header-start">
           <button id="admin-menu-toggle" class="admin-icon-button" type="button" aria-label="Recolher ou expandir menu" aria-expanded="true">☰</button>
-          <div><p class="admin-breadcrumb">Administração EFAS</p><h1 id="admin-page-title">Visão geral</h1></div>
+          <div><p class="admin-breadcrumb">Administração EFAS</p><h1 id="admin-page-title">Discentes</h1></div>
         </div>
         <div class="admin-header-tools">
           <div class="admin-global-search">
@@ -74,14 +71,14 @@
       <main class="admin-content">
         <div id="initial-warning" class="admin-warning" hidden>Por segurança, altere a senha inicial antes de cadastrar dados.</div>
 
-        <section class="admin-view active" data-view="overview" aria-labelledby="overview-title">
+        <section class="admin-view" data-view="overview" aria-labelledby="overview-title" hidden>
           <div class="admin-view-heading"><div><p class="eyebrow dark">Resumo acadêmico</p><h2 id="overview-title">Visão geral</h2><p>Acompanhe o pelotão e acesse rapidamente os pontos que exigem atenção.</p></div><button id="refresh-button" class="button button-outline-dark" type="button">Atualizar dados</button></div>
           <div id="overview-cards" class="overview-card-grid" aria-live="polite"></div>
           <section class="admin-panel quick-actions-panel"><div class="section-heading"><div><p class="eyebrow dark">Atalhos</p><h3>Ações rápidas</h3></div></div><div id="quick-actions" class="quick-actions-grid"></div></section>
           <section class="admin-panel pending-panel"><div class="section-heading"><div><p class="eyebrow dark">Conferência</p><h3>Painel de pendências</h3></div><button class="button button-text" type="button" data-admin-view-target="grades">Ver lançamentos</button></div><div id="pending-list" class="pending-list"></div></section>
         </section>
 
-        <section class="admin-view" data-view="students" aria-labelledby="students-title" hidden>
+        <section class="admin-view active" data-view="students" aria-labelledby="students-title">
           <div class="admin-view-heading"><div><p class="eyebrow dark">Cadastros</p><h2 id="students-title">Discentes</h2><p>Cadastre ou atualize os dados de acesso de um discente.</p></div><button class="button button-gold" type="button" data-focus-target="#student-form input[name=student_id]">Cadastrar discente</button></div>
           <form id="student-form" class="admin-panel compact-form-panel single-form-panel">
               <div class="section-heading"><div><h3>Cadastrar ou atualizar discente</h3><p>O código individual será solicitado no primeiro acesso.</p></div></div>
@@ -193,7 +190,7 @@
   <dialog id="admin-feedback-dialog" class="student-details-dialog admin-feedback-dialog" aria-labelledby="admin-feedback-title"><div class="student-details-head"><div><p id="admin-feedback-eyebrow" class="eyebrow dark">Aviso</p><h2 id="admin-feedback-title">Mensagem</h2></div><button id="admin-feedback-close" class="dialog-close" type="button" aria-label="Fechar aviso">×</button></div><div id="admin-feedback-content" class="admin-feedback-content"></div><div class="student-details-actions"><button id="admin-feedback-close-bottom" class="button button-dark" type="button">Entendi</button></div></dialog>
   <dialog id="admin-confirm-dialog" class="admin-confirm-dialog" aria-labelledby="admin-confirm-title"><div class="student-details-head"><div><p class="eyebrow dark">Confirmação necessária</p><h2 id="admin-confirm-title">Confirmar ação</h2></div><button id="admin-confirm-close" class="dialog-close" type="button" aria-label="Fechar confirmação">×</button></div><p id="admin-confirm-message"></p><div class="student-details-actions"><button id="admin-confirm-cancel" class="button button-outline-dark" type="button">Cancelar</button><button id="admin-confirm-submit" class="button button-danger" type="button">Confirmar</button></div></dialog>
 
-  <script src="admin.js?v=20260817-fixes" defer></script>
-  <script src="admin-dashboard.js?v=20260817-fixes" defer></script>
+  <script src="admin.js?v=20260817-admin-shell" defer></script>
+  <script src="admin-dashboard.js?v=20260817-admin-shell" defer></script>
 </body>
 </html>

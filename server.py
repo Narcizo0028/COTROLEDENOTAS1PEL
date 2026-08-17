@@ -671,7 +671,7 @@ class Handler(SimpleHTTPRequestHandler):
             with connect() as db:raw=notes_report_pdf(db)
             self.output_pdf(raw,f"relatorio-notas-{datetime.now().strftime('%Y-%m-%d')}.pdf");return
         if path=="/": self.path="/index.html"
-        elif path in ("/admin","/administracao"):self.path="/admin.html"
+        elif path in ("/admin","/administracao"):self.path="/painel.html"
         elif path not in PUBLIC_FILES:
             self.send_error(404, "Arquivo não encontrado")
             return

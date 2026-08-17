@@ -98,7 +98,7 @@ function dashboardBuildMetrics() {
 }
 
 function dashboardActivateView(view, focusSelector = '') {
-  const target = dashboardViewTitles[view] ? view : 'overview';
+  const target = dashboardViewTitles[view] ? view : 'students';
   document.querySelectorAll('.admin-nav-item[data-admin-view]').forEach(button => button.classList.toggle('active', button.dataset.adminView === target));
   document.querySelectorAll('.admin-view').forEach(section => {
     const sectionView = section.dataset.view;
@@ -643,4 +643,4 @@ $('#compact-tables-preference').addEventListener('change', event => { document.b
 $('#reduce-motion-preference').addEventListener('change', event => { document.body.classList.toggle('reduce-motion', event.target.checked); localStorage.setItem('efas-admin-reduce-motion', event.target.checked ? '1' : '0'); });
 
 if (localStorage.getItem('efas-admin-sidebar-collapsed') === 'true' && window.innerWidth > 960) $('#dashboard').classList.add('sidebar-collapsed');
-dashboardActivateView(location.hash.slice(1) || localStorage.getItem('efas-admin-view') || 'overview');
+dashboardActivateView(location.hash.slice(1) || localStorage.getItem('efas-admin-view') || 'students');
