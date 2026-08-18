@@ -20,7 +20,7 @@ INITIAL_PASSWORD = os.environ.get("EFAS_INITIAL_ADMIN_PASSWORD", "")
 COOKIE_SECURE = os.environ.get("EFAS_COOKIE_SECURE", "0") == "1"
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 PUBLIC_FILES = {
-    "/index.html", "/admin.html", "/painel.html", "/styles.css", "/script.js", "/admin.js", "/admin-dashboard.js",
+    "/index.html", "/admin.html", "/styles.css", "/script.js", "/admin.js",
     "/assets/escudo-efas.png",
 }
 
@@ -80,42 +80,6 @@ def student_subject_restriction(db):
     subject_id=int(selected["value"]) if selected and str(selected["value"]).isdigit() else None
     subject=db.execute("SELECT id,name FROM subjects WHERE id=?",(subject_id,)).fetchone() if subject_id else None
     return {"enabled":bool(enabled and enabled["value"]=="1" and subject),"subject_id":subject_id if subject else None,"subject_name":subject["name"] if subject else None}
-
-def setting_text(db,key,default=""):
-    row=db.execute("SELECT value FROM settings WHERE key=?",(key,)).fetchone()
-    return row["value"] if row else default
-
-def setting_json(db,key,default=None):
-    row=db.execute("SELECT value FROM settings WHERE key=?",(key,)).fetchone()
-    if not row:return default
-    try:return json.loads(row["value"])
-    except json.JSONDecodeError:return default
-
-def setting_json_set(db,key,value):
-    db.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(key,json.dumps(value,ensure_ascii=False)))
-
-def append_history(db,key,message,**extra):
-    history=setting_json(db,key,[]) or []
-    history.insert(0,{"at":datetime.now().strftime("%d/%m/%Y %H:%M:%S"),"message":message,**extra})
-    setting_json_set(db,key,history[:50])
-
-def student_entry_authorization(db):
-    data=setting_json(db,"student_entry_authorization",{}) or {}
-    now=datetime.now(LOCAL_TIMEZONE).replace(tzinfo=None)
-    active=bool(data.get("active")) and not bool(data.get("blocked"))
-    start_at=str(data.get("start_at") or "")
-    end_at=str(data.get("end_at") or "")
-    for value,compare in ((start_at,"start"),(end_at,"end")):
-        if not value:continue
-        try:
-            parsed=datetime.fromisoformat(value)
-            if compare=="start" and now<parsed:active=False
-            if compare=="end" and now>parsed:active=False
-        except ValueError:continue
-    return {"subject_id":data.get("subject_id"),"student_ids":data.get("student_ids") or [],"start_at":start_at,"end_at":end_at,"active":active,"blocked":bool(data.get("blocked"))}
-
-def admin_payload(db):
-    return {"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_subject_restriction":student_subject_restriction(db),"student_entry_authorization":student_entry_authorization(db),"authorization_history":setting_json(db,"authorization_history",[]) or [],"import_history":setting_json(db,"import_history",[]) or [],"score_history":setting_json(db,"score_history",[]) or [],"ranking_updated_at":setting_text(db,"ranking_updated_at")}
 
 def exam_is_visible(exam, now=None):
     """Mantém a avaliação pública somente até duas horas após o horário agendado."""
@@ -664,7 +628,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/admin/data":
             if not self.require_admin():return
             with connect() as db:
-                self.output(admin_payload(db))
+                self.output({"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_subject_restriction":student_subject_restriction(db)})
             return
         if path=="/api/admin/report.pdf":
             if not self.require_admin():return
@@ -780,28 +744,12 @@ class Handler(SimpleHTTPRequestHandler):
         if not user:return
         if self.path=="/api/admin/calendar/import":
             try:
-                action=str(data.get("action","apply")).strip().lower()
-                encoded=str(data.get("pdf_base64",''))
-                raw=base64.b64decode(encoded,validate=True) if encoded else b''
-                if action=="apply" and isinstance(data.get("events"),list):
-                    events=[]
-                    for item in data["events"]:
-                        date,subject,exam_time,place,exam_type=(str(item.get(key,"")).strip() for key in ("date","subject","time","place","type"))
-                        if not date or not subject or not exam_time or not exam_type:raise ValueError("Preencha data, disciplina, horário e tipo em todas as linhas da prévia.")
-                        events.append((date,subject,exam_time,place or "",exam_type))
-                else:
-                    if len(raw)>5*1024*1024:raise ValueError('O PDF deve possuir no máximo 5 MB.')
-                    tuples=parse_calendar_pdf(raw)
-                    events=[{"date":item[0],"subject":item[1],"time":item[2],"place":item[3],"type":item[4]} for item in tuples]
-                    if action=="preview":
-                        self.output({"ok":True,"events":events});return
-                    events=tuples
+                encoded=str(data.get("pdf_base64",''));raw=base64.b64decode(encoded,validate=True)
+                if len(raw)>5*1024*1024:raise ValueError('O PDF deve possuir no máximo 5 MB.')
+                events=parse_calendar_pdf(raw);version='imported-'+hashlib.sha256(raw).hexdigest()[:16]
                 with connect() as db:
                     db.execute("DELETE FROM exams");db.executemany("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",events)
-                    version='imported-'+hashlib.sha256(json.dumps(events,ensure_ascii=False).encode()).hexdigest()[:16]
                     db.execute("INSERT INTO settings(key,value) VALUES('official_calendar_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(version,))
-                    append_history(db,"import_history",f"Calendário substituído com {len(events)} avaliação(ões).",type="Calendário",status="success")
-                    db.commit()
                 self.output({"ok":True,"imported":len(events),"version":version});return
             except (ValueError,TypeError) as error:self.output({"error":str(error)},400);return
         if self.path=="/api/admin/student-scores/import":
@@ -881,7 +829,6 @@ class Handler(SimpleHTTPRequestHandler):
                         elif not (same_value(exam1,row['exam1']) and same_value(exam2,row['exam2']) and same_value(work,row['work'])):
                             raise sqlite3.Error(f'A conferência de {subject_name} falhou.')
                     pdf_import_log(logs,'info',f'Importação concluída: {len(confirmed)} disciplina(s) salva(s) para {student["name"]}.')
-                    append_history(db,"import_history",f"Notas importadas para {student['name']} ({len(confirmed)} disciplina(s)).",type="Notas",status="success")
                     user_action=None
                     if os.environ.get("RENDER") and "/opt/render/project/src/data" not in str(DB).replace("\\","/"):
                         user_action="As notas foram salvas agora, mas o armazenamento do site pode não ser permanente. Peça para conferir o disco permanente na pasta de dados para elas não sumirem depois."
@@ -967,52 +914,15 @@ class Handler(SimpleHTTPRequestHandler):
                     if len(password)<12:raise ValueError("A nova senha deve possuir pelo menos 12 caracteres.")
                     if verify(password,current["salt"],current["password_hash"]):raise ValueError("Escolha uma senha diferente da atual.")
                     salt,digest=password_hash(password);db.execute("UPDATE admins SET salt=?,password_hash=?,must_change=0 WHERE username=?",(salt,digest,user))
-                elif self.path=="/api/admin/subject":
-                    name=str(data.get("name","")).strip();hours=int(data.get("hours") or 0);exam_count=int(data.get("exam_count") or 1);grading_mode=str(data.get("grading_mode","normal")).strip()
-                    if not name:raise ValueError("Informe o nome da disciplina.")
-                    if hours<1:raise ValueError("Informe a carga horária.")
-                    if exam_count not in (1,2):raise ValueError("Modelo de avaliação inválido.")
-                    if grading_mode not in ("normal","apt","taf"):raise ValueError("Modo de nota inválido.")
-                    db.execute("INSERT INTO subjects(hours,name,exam_count,grading_mode) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET hours=excluded.hours,exam_count=excluded.exam_count,grading_mode=excluded.grading_mode",(hours,name,exam_count,grading_mode))
-                elif self.path=="/api/admin/ranking/refresh":
-                    stamp=datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                    db.execute("INSERT INTO settings(key,value) VALUES('ranking_updated_at',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(stamp,))
-                    db.commit()
-                    self.output({"ok":True,"ranking":ranking(db),"ranking_updated_at":stamp});return
-                elif self.path=="/api/admin/student-entry-authorization":
-                    action=str(data.get("action","save")).strip().lower()
-                    if action=="block":
-                        db.execute("INSERT INTO settings(key,value) VALUES('student_entry_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("0",))
-                        auth=setting_json(db,"student_entry_authorization",{}) or {}
-                        auth["blocked"]=True
-                        setting_json_set(db,"student_entry_authorization",auth)
-                        append_history(db,"authorization_history","Novos lançamentos bloqueados.",action="block")
-                    elif action=="revoke":
-                        setting_json_set(db,"student_entry_authorization",{})
-                        append_history(db,"authorization_history","Autorização revogada.",action="revoke")
-                    elif action=="save":
-                        subject_id=data.get("subject_id")
-                        student_ids=[str(item).strip() for item in (data.get("student_ids") or []) if str(item).strip()]
-                        start_at=str(data.get("start_at") or "").strip();end_at=str(data.get("end_at") or "").strip()
-                        if subject_id:
-                            subject_id=int(subject_id)
-                            if not db.execute("SELECT 1 FROM subjects WHERE id=?",(subject_id,)).fetchone():raise ValueError("Selecione uma disciplina válida.")
-                            db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",("1",))
-                            db.execute("INSERT INTO settings(key,value) VALUES('student_subject_restriction_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(subject_id),))
-                        setting_json_set(db,"student_entry_authorization",{"subject_id":int(subject_id) if subject_id else None,"student_ids":student_ids,"start_at":start_at,"end_at":end_at,"active":True,"blocked":False})
-                        append_history(db,"authorization_history",f"Autorização salva para {len(student_ids) or len(list(db.execute('SELECT id FROM students')))} discente(s).",action="save")
-                    else:raise ValueError("Ação de autorização inválida.")
-                    db.commit()
-                    self.output({"ok":True,"student_entry_enabled":student_entry_enabled(db),"student_subject_restriction":student_subject_restriction(db),"student_entry_authorization":student_entry_authorization(db),"authorization_history":setting_json(db,"authorization_history",[]) or []});return
                 elif self.path=="/api/admin/exams":
-                    date,subject,exam_time,place,exam_type=(str(data.get(key,"")).strip() for key in ("date","subject","time","place","type"))
+                    date,subject,exam_time,exam_type=(str(data.get(key,"")).strip() for key in ("date","subject","time","type"))
                     if not date or not subject or not exam_time or not exam_type:raise ValueError("Preencha data, disciplina, horário e tipo.")
-                    db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",(date,subject,exam_time,place,exam_type))
+                    db.execute("INSERT INTO exams(date,subject,time,place,type) VALUES(?,?,?,?,?)",(date,subject,exam_time,"",exam_type))
                 elif self.path=="/api/admin/exams/update":
-                    exam_id=int(data.get("id") or 0);date,subject,exam_time,place,exam_type=(str(data.get(key,"")).strip() for key in ("date","subject","time","place","type"))
+                    exam_id=int(data.get("id") or 0);date,subject,exam_time,exam_type=(str(data.get(key,"")).strip() for key in ("date","subject","time","type"))
                     if not exam_id or not date or not subject or not exam_time or not exam_type:raise ValueError("Preencha data, disciplina, horário e tipo.")
                     if not db.execute("SELECT 1 FROM exams WHERE id=?",(exam_id,)).fetchone():raise ValueError("Prova não encontrada no calendário.")
-                    db.execute("UPDATE exams SET date=?,subject=?,time=?,place=?,type=? WHERE id=?",(date,subject,exam_time,place,exam_type,exam_id))
+                    db.execute("UPDATE exams SET date=?,subject=?,time=?,place='',type=? WHERE id=?",(date,subject,exam_time,exam_type,exam_id))
                 elif self.path=="/api/admin/exams/delete":
                     exam_id=int(data.get("id") or 0)
                     if not exam_id:raise ValueError("Prova inválida.")
