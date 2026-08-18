@@ -475,12 +475,6 @@ def calcular_media(pontos_obtidos, pontos_distribuidos):
     # ROUND_DOWN garante truncamento, sem arredondar (por exemplo, 9,969... -> 9,96).
     return float(media.quantize(Decimal("0.01"), rounding=ROUND_DOWN))
 
-def calcular_aproveitamento(pontos_obtidos, pontos_distribuidos):
-    """Retorna o aproveitamento proporcional em percentual, sem arredondar para o ranking."""
-    obtidos=converter_numero(pontos_obtidos);distribuidos=converter_numero(pontos_distribuidos)
-    if not obtidos.is_finite() or not distribuidos.is_finite() or distribuidos<=0:return 0.0
-    return float(max(Decimal("0"),min(Decimal("100"),(obtidos/distribuidos)*Decimal("100"))))
-
 def ranking(db):
     rows = db.execute("""SELECT s.id,s.name,s.rank,s.observation,
       COALESCE(SUM(CASE
@@ -499,7 +493,6 @@ def ranking(db):
     for row in rows:
         item=dict(row)
         item["average"]=calcular_media(item["points"], item["distributed"])
-        item["percentage"]=calcular_aproveitamento(item["points"], item["distributed"])
         result.append(item)
 
     # Classificação: pontos obtidos; em empate, média numérica e nome em ordem alfabética.
@@ -511,7 +504,7 @@ def ranking(db):
 
 def student_ranking_view(rows):
     """Expõe somente colocação e pontuação, sem qualquer dado identificador."""
-    return [{key:item[key] for key in ("position","points","distributed","average","percentage")} for item in rows]
+    return [{key:item[key] for key in ("position","points","distributed","average")} for item in rows]
 
 def notes_report_pdf(db):
     """Gera o relatório administrativo de lançamentos em PDF."""

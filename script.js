@@ -226,7 +226,6 @@ function renderReport(student){
         <div><span>Colocação</span><strong>${r.position}º</strong></div>
         <div><span>Pontos</span><strong>${fmt(r.points)} / ${fmt(r.distributed)}</strong></div>
         <div><span>Média</span><strong>${formatarMedia(r.average)}</strong></div>
-        <div><span>Aproveitamento</span><strong>${fmt((Number(r.points)||0)/(Number(r.distributed)||1)*100)}%</strong></div>
       </div>
     </div>
     ${student.observation?`<div class="student-observation"><strong>Observação da administração</strong><p>${esc(student.observation)}</p></div>`:''}
@@ -272,12 +271,12 @@ function renderReport(student){
 function renderStudentRanking(items=[]){
   if(!studentRankingList)return;
   studentRankingList.innerHTML=items.length?`<div class="table-wrap student-ranking-desktop"><table class="grade-table student-ranking-table">
-    <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th><th>Aproveitamento</th></tr></thead>
-    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${formatarMedia(item.average)}</td><td>${fmt((Number(item.points)||0)/(Number(item.distributed)||1)*100)}%</td></tr>`).join('')}</tbody>
+    <thead><tr><th>Colocação</th><th>Discente</th><th>Pontos obtidos</th><th>Pontos distribuídos</th><th>Média</th></tr></thead>
+    <tbody>${items.map(item=>`<tr><td><strong>${item.position}º</strong></td><td><span class="ranking-student-name" aria-label="Identidade protegida">████████████</span></td><td>${fmt(item.points)}</td><td>${fmt(item.distributed)}</td><td>${formatarMedia(item.average)}</td></tr>`).join('')}</tbody>
   </table></div><div class="student-ranking-mobile">${items.map(item=>`<article class="ranking-mobile-card">
     <div class="ranking-mobile-position"><span>Colocação</span><strong>${item.position}º</strong></div>
     <div class="ranking-mobile-identity"><span>Discente</span><strong class="ranking-student-name" aria-label="Identidade protegida">████████████</strong></div>
-    <dl><div><dt>Pontos obtidos</dt><dd>${fmt(item.points)}</dd></div><div><dt>Pontos distribuídos</dt><dd>${fmt(item.distributed)}</dd></div><div><dt>Média</dt><dd>${formatarMedia(item.average)}</dd></div><div><dt>Aproveitamento</dt><dd>${fmt((Number(item.points)||0)/(Number(item.distributed)||1)*100)}%</dd></div></dl>
+    <dl><div><dt>Pontos obtidos</dt><dd>${fmt(item.points)}</dd></div><div><dt>Pontos distribuídos</dt><dd>${fmt(item.distributed)}</dd></div><div><dt>Média</dt><dd>${formatarMedia(item.average)}</dd></div></dl>
   </article>`).join('')}</div>`:'<p class="empty-state">Nenhum discente disponível no ranking.</p>';
 }
 
