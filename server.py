@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from zoneinfo import ZoneInfo
 import base64, binascii, difflib, hashlib, hmac, io, json, os, re, secrets, sqlite3, time, unicodedata
+from collections import Counter
 
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "notas.db"
@@ -506,6 +507,67 @@ def student_ranking_view(rows):
     """Expõe somente colocação e pontuação, sem qualquer dado identificador."""
     return [{key:item[key] for key in ("position","points","distributed","average")} for item in rows]
 
+def componentes_pontuaveis(subject):
+    """Campos e pesos que podem compor os pontos distribuídos de uma disciplina."""
+    if subject["grading_mode"] == "apt": return []
+    if subject["grading_mode"] == "taf": return [("exam1", "1º TAF", 3), ("exam2", "2º TAF", 3), ("work", "3º TAF", 4)]
+    if is_defesa_pessoal(subject): return [("exam2", "AVF", 6), ("work", "Trabalho", 4)]
+    return ([] if subject["exam_count"] == 1 else [("exam1", "AVC", 3)]) + [("exam2", "AVF", 7 if subject["exam_count"] == 1 else 4), ("work", "Trabalho", 3)]
+
+def auditoria_lancamentos(db):
+    """Compara componentes lançados com o padrão predominante, sem alterar dados."""
+    students=[dict(row) for row in db.execute("SELECT id,name FROM students ORDER BY name")]
+    subjects=[dict(row) for row in db.execute("SELECT id,name,exam_count,grading_mode FROM subjects ORDER BY name")]
+    scores={(str(row["student_id"]),row["subject_id"]):dict(row) for row in db.execute("SELECT student_id,subject_id,exam1,exam2,work FROM scores")}
+    states={}; totals={}
+    for student in students:
+        total=0; states[student["id"]]={}
+        for subject in subjects:
+            score=scores.get((str(student["id"]),subject["id"]),{})
+            for field,label,weight in componentes_pontuaveis(subject):
+                active=converter_numero(score.get(field,0))>0
+                states[student["id"]][(subject["id"],field)]=active
+                total+=weight if active else 0
+        totals[student["id"]]=total
+    frequencies=Counter(totals.values()); standard=frequencies.most_common(1)[0][0] if frequencies else 0
+    reference=[student["id"] for student in students if totals[student["id"]]==standard]
+    findings=[]
+    for student in students:
+        if totals[student["id"]]==standard: continue
+        differences=[]
+        for subject in subjects:
+            for field,label,weight in componentes_pontuaveis(subject):
+                key=(subject["id"],field); expected=sum(states[sid][key] for sid in reference)*2>=len(reference) if reference else False
+                actual=states[student["id"]][key]
+                if actual!=expected:
+                    differences.append({"subject":subject["name"],"component":label,"weight":weight,"actual":actual,"expected":expected})
+        findings.append({"student":student,"distributed":totals[student["id"]],"difference":totals[student["id"]]-standard,"components":differences})
+    return {"students":len(students),"standard":standard,"standard_count":frequencies.get(standard,0),"findings":findings}
+
+def auditoria_lancamentos_pdf(db):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    audit=auditoria_lancamentos(db); output=io.BytesIO(); styles=getSampleStyleSheet()
+    title=ParagraphStyle('AuditTitle',parent=styles['Title'],fontName='Helvetica-Bold',fontSize=16,alignment=TA_CENTER,textColor=colors.HexColor('#171713'))
+    sub=ParagraphStyle('AuditSub',parent=styles['Normal'],fontSize=8,alignment=TA_CENTER,textColor=colors.HexColor('#5f5d55'),spaceAfter=5*mm)
+    cell=ParagraphStyle('AuditCell',parent=styles['Normal'],fontSize=7,leading=8.5)
+    doc=SimpleDocTemplate(output,pagesize=landscape(A4),leftMargin=10*mm,rightMargin=10*mm,topMargin=12*mm,bottomMargin=12*mm,title='Auditoria de lançamentos')
+    story=[Paragraph('AUDITORIA DE LANÇAMENTOS DE NOTAS',title),Paragraph(f'Padrão predominante: {audit["standard"]:.2f} pontos distribuídos em {audit["standard_count"]} de {audit["students"]} discentes<br/>Gerado em {datetime.now().strftime("%d/%m/%Y às %H:%M")}. Relatório somente para conferência.',sub)]
+    data=[[Paragraph(x,cell) for x in ('Discente','Distribuídos','Diferença','Disciplina','Componente','Indicação')]]
+    for finding in audit['findings']:
+        components=finding['components'] or [{"subject":"—","component":"—","actual":None,"expected":None}]
+        for component in components:
+            indication='Lançado somente para este discente' if component['actual'] else 'Possível componente não lançado'
+            data.append([Paragraph(str(finding['student']['name']),cell),Paragraph(f'{finding["distributed"]:.2f}',cell),Paragraph(f'{finding["difference"]:+.2f}',cell),Paragraph(str(component['subject']),cell),Paragraph(str(component['component']),cell),Paragraph(indication,cell)])
+    if len(data)==1: data.append([Paragraph('Nenhuma divergência em relação ao padrão predominante.',cell)]+[Paragraph('',cell) for _ in range(5)])
+    table=Table(data,colWidths=[50*mm,25*mm,22*mm,60*mm,28*mm,75*mm],repeatRows=1)
+    table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#8a6b25')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),0.3,colors.HexColor('#c9c2b2')),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f5f2e9')]),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]));story.extend([table,Spacer(1,6*mm),Paragraph('A auditoria não modifica notas, pontos distribuídos, médias ou classificação.',cell)])
+    doc.build(story); return output.getvalue()
+
 def notes_report_pdf(db):
     """Gera o relatório administrativo de lançamentos em PDF."""
     from reportlab.lib import colors
@@ -626,6 +688,10 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_admin():return
             with connect() as db:raw=notes_report_pdf(db)
             self.output_pdf(raw,f"relatorio-notas-{datetime.now().strftime('%Y-%m-%d')}.pdf");return
+        if path=="/api/admin/audit.pdf":
+            if not self.require_admin():return
+            with connect() as db:raw=auditoria_lancamentos_pdf(db)
+            self.output_pdf(raw,f"auditoria-lancamentos-{datetime.now().strftime('%Y-%m-%d')}.pdf");return
         if path=="/": self.path="/index.html"
         elif path in ("/admin","/administracao"):self.path="/admin.html"
         elif path not in PUBLIC_FILES:
