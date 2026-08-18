@@ -466,13 +466,14 @@ def converter_numero(valor):
         return Decimal("0")
 
 def calcular_media(pontos_obtidos, pontos_distribuidos):
-    """Retorna a média proporcional (0 a 10), mantendo precisão para a classificação."""
+    """Calcula a média numérica na escala de 0 a 10, truncada em duas casas."""
     obtidos = converter_numero(pontos_obtidos)
     distribuidos = converter_numero(pontos_distribuidos)
     if not obtidos.is_finite() or not distribuidos.is_finite() or distribuidos <= 0:
         return 0.0
-    media = (obtidos / distribuidos) * Decimal("10")
-    return float(max(Decimal("0"), min(Decimal("10"), media)))
+    media = max(Decimal("0"), min(Decimal("10"), (obtidos / distribuidos) * Decimal("10")))
+    # ROUND_DOWN garante truncamento, sem arredondar (por exemplo, 9,969... -> 9,96).
+    return float(media.quantize(Decimal("0.01"), rounding=ROUND_DOWN))
 
 def calcular_aproveitamento(pontos_obtidos, pontos_distribuidos):
     """Retorna o aproveitamento proporcional em percentual, sem arredondar para o ranking."""
