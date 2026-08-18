@@ -104,7 +104,7 @@ document.addEventListener('click',e=>{
   const link=e.target.closest('a');
   if(!link)return;
   // Administração e links externos: fecha o menu e deixa o navegador seguir.
-  if(link.classList.contains('nav-admin')||link.getAttribute('href')==='admin.html'){
+  if(link.classList.contains('nav-admin')||link.getAttribute('href')==='admin.html'||link.getAttribute('href')==='/admin'){
     closeMenu();
     return;
   }
