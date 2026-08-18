@@ -13,8 +13,10 @@ public_files = {
     "index.html": root / "portal.html",
     "painel.html": root / "painel.html",
     "admin.html": root / "painel.html",
+    "coordenacao.html": root / "coordenacao.html",
     "admin.js": root / "admin.js",
     "admin-dashboard.js": root / "admin-dashboard.js",
+    "coordenacao.js": root / "coordenacao.js",
     "script.js": root / "script.js",
     "styles.css": root / "styles.css",
     "assets/escudo-efas.png": root / "assets" / "escudo-efas.png",
@@ -37,7 +39,7 @@ injected = f'''EMBEDDED_PUBLIC_BUNDLE = "{encoded}"
 def restore_embedded_public_files():
     """Restaura os arquivos públicos corretos sem alterar o banco de dados."""
     raw = base64.b64decode(EMBEDDED_PUBLIC_BUNDLE)
-    allowed = {{"portal.html", "index.html", "painel.html", "admin.html", "admin.js", "admin-dashboard.js", "script.js", "styles.css", "assets/escudo-efas.png"}}
+    allowed = {{"portal.html", "index.html", "painel.html", "admin.html", "coordenacao.html", "admin.js", "admin-dashboard.js", "coordenacao.js", "script.js", "styles.css", "assets/escudo-efas.png"}}
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         for name in archive.namelist():
             if name not in allowed:

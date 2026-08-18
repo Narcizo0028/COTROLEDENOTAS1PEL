@@ -5,7 +5,7 @@ const dashboardTableConfigs = new Map();
 const dashboardViewTitles = {
   overview: 'Visão geral', students: 'Discentes', subjects: 'Disciplinas',
   grades: 'Lançamento de notas', authorizations: 'Autorizações', 'pdf-import': 'Importação por PDF',
-  calendar: 'Calendário de avaliações', ranking: 'Ranking', reports: 'Relatórios', settings: 'Configurações'
+  calendar: 'Calendário de avaliações', ranking: 'Ranking', coordination: 'Coordenação', reports: 'Relatórios', settings: 'Configurações'
 };
 let dashboardMetrics = null;
 let dashboardCalendarMode = 'month';
@@ -328,6 +328,42 @@ function dashboardRenderRanking() {
   ] });
 }
 
+function dashboardResetCoordinationForm() {
+  const form = $('#coordination-form');
+  if (!form) return;
+  form.reset();
+  $('#coordination-edit-mode').value = '';
+  $('#coordination-username').readOnly = false;
+  $('#coordination-active').checked = true;
+  $('#coordination-password').required = true;
+  $('#coordination-cancel-edit').hidden = true;
+  form.querySelector('.panel-message').textContent = '';
+}
+
+function dashboardFillCoordinationForm(member) {
+  $('#coordination-edit-mode').value = member.username;
+  $('#coordination-username').value = member.username;
+  $('#coordination-username').readOnly = true;
+  $('#coordination-name').value = member.name;
+  $('#coordination-rank').value = member.rank;
+  $('#coordination-password').value = '';
+  $('#coordination-password').required = false;
+  $('#coordination-active').checked = Number(member.active) === 1;
+  $('#coordination-cancel-edit').hidden = false;
+  dashboardActivateView('coordination', '#coordination-name');
+}
+
+function dashboardRenderCoordination() {
+  const rows = (cache.coordination_staff || []).map(member => ({ ...member, statusLabel: Number(member.active) ? 'Ativo' : 'Inativo' }));
+  dashboardRenderTable({ id: 'coordination-staff', container: '#coordination-data', rows, pageSize: 20, defaultSort: 'name', searchPlaceholder: 'Pesquisar militar ou usuário', searchFields: ['name', 'username', 'rank'], filters: [{ key: 'statusLabel', label: 'Situação', options: ['Ativo', 'Inativo'] }], columns: [
+    { key: 'name', label: 'Militar', value: row => row.name, render: row => `<strong>${esc(row.name)}</strong><small>${esc(row.rank)}</small>` },
+    { key: 'username', label: 'Usuário', value: row => row.username },
+    { key: 'statusLabel', label: 'Situação', value: row => row.statusLabel, render: row => `<span class="status-badge ${Number(row.active) ? 'success' : 'danger'}">${esc(row.statusLabel)}</span>` },
+    { key: 'created_at', label: 'Cadastro', value: row => row.created_at || '' },
+    { key: 'actions', label: 'Ações', sortable: false, export: false, render: row => `<div class="table-actions"><button class="button button-outline-dark button-compact" type="button" data-edit-coordination="${esc(row.username)}">Editar</button><button class="button button-danger button-compact" type="button" data-delete-coordination="${esc(row.username)}">Excluir</button></div>` }
+  ] });
+}
+
 function dashboardGradeContext() {
   const subjectId = $('#collective-score-form').hidden ? $('#score-subject').value : $('#collective-subject').value;
   const subject = cache.subjects.find(item => String(item.id) === String(subjectId));
@@ -493,6 +529,7 @@ function dashboardRenderAll() {
   dashboardRenderSubjects();
   dashboardRenderScores();
   dashboardRenderRanking();
+  dashboardRenderCoordination();
   dashboardRenderAuthorization();
   dashboardRenderCalendar();
   dashboardEnhanceCalendarActions();
@@ -576,6 +613,24 @@ document.querySelectorAll('.admin-nav-item[data-admin-view]').forEach(button => 
 document.addEventListener('click', event => {
   const target = event.target.closest('[data-admin-view-target]');
   if (target) dashboardActivateView(target.dataset.adminViewTarget, target.dataset.focusTarget || '');
+  const editCoordination = event.target.closest('[data-edit-coordination]');
+  if (editCoordination) {
+    const member = (cache.coordination_staff || []).find(item => String(item.username) === String(editCoordination.dataset.editCoordination));
+    if (member) dashboardFillCoordinationForm(member);
+    return;
+  }
+  const deleteCoordination = event.target.closest('[data-delete-coordination]');
+  if (deleteCoordination) {
+    const username = deleteCoordination.dataset.deleteCoordination;
+    const member = (cache.coordination_staff || []).find(item => String(item.username) === String(username));
+    if (!member || !window.confirm(`Excluir definitivamente o acesso de ${member.name}?`)) return;
+    deleteCoordination.disabled = true;
+    api('/api/admin/coordination/delete', { method: 'POST', body: JSON.stringify({ username }) })
+      .then(result => { cache.coordination_staff = result.coordination_staff || []; dashboardRenderCoordination(); dashboardResetCoordinationForm(); })
+      .catch(error => window.alert(error.message))
+      .finally(() => { deleteCoordination.disabled = false; });
+    return;
+  }
   const subjectButton = event.target.closest('[data-open-subject]');
   if (subjectButton) { dashboardActivateView('grades'); setScoreMode('collective'); $('#collective-subject').value = subjectButton.dataset.openSubject; renderCollectiveScores(); dashboardGradeContext(); }
   const searchItem = event.target.closest('[data-search-view]');
@@ -600,6 +655,25 @@ $('#subject-form').addEventListener('submit', async event => {
   catch (error) { message.textContent = error.message; }
   finally { button.disabled = false; }
 });
+
+$('#coordination-form')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget, message = form.querySelector('.panel-message'), button = form.querySelector('button[type="submit"]');
+  const payload = Object.fromEntries(new FormData(form));
+  payload.active = $('#coordination-active').checked ? '1' : '0';
+  if (!$('#coordination-edit-mode').value && !payload.password) { message.textContent = 'Defina uma senha com pelo menos 8 caracteres.'; return; }
+  button.disabled = true; message.textContent = 'Salvando acesso...';
+  try {
+    const result = await api('/api/admin/coordination', { method: 'POST', body: JSON.stringify(payload) });
+    cache.coordination_staff = result.coordination_staff || [];
+    message.textContent = 'Acesso da coordenação salvo com sucesso.';
+    dashboardRenderCoordination();
+    dashboardResetCoordinationForm();
+  } catch (error) { message.textContent = error.message; }
+  finally { button.disabled = false; }
+});
+
+$('#coordination-cancel-edit')?.addEventListener('click', dashboardResetCoordinationForm);
 
 ['score-subject', 'score-student', 'collective-subject'].forEach(id => $(`#${id}`).addEventListener('change', () => { dashboardGradeContext(); requestAnimationFrame(dashboardUpdateSaveSummaries); }));
 $('#score-form').addEventListener('input', dashboardUpdateSaveSummaries);

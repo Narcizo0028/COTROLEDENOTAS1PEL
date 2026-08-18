@@ -15,13 +15,14 @@ HOST = os.environ.get("EFAS_HOST", "0.0.0.0")
 PORT = int(os.environ.get("EFAS_PORT", os.environ.get("PORT", "4174")))
 SESSIONS = {}
 STUDENT_SESSIONS = {}
+COORDINATION_SESSIONS = {}
 USER = os.environ.get("EFAS_ADMIN_USER", "administrador")
 INITIAL_PASSWORD = os.environ.get("EFAS_INITIAL_ADMIN_PASSWORD", "")
 COOKIE_SECURE = os.environ.get("EFAS_COOKIE_SECURE", "0") == "1"
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 PUBLIC_FILES = {
-    "/index.html", "/admin.html", "/painel.html", "/styles.css", "/script.js", "/admin.js", "/admin-dashboard.js",
-    "/assets/escudo-efas.png",
+    "/index.html", "/admin.html", "/painel.html", "/coordenacao.html", "/styles.css", "/script.js",
+    "/admin.js", "/admin-dashboard.js", "/coordenacao.js", "/assets/escudo-efas.png",
 }
 
 SUBJECTS = [
@@ -114,8 +115,17 @@ def student_entry_authorization(db):
         except ValueError:continue
     return {"subject_id":data.get("subject_id"),"student_ids":data.get("student_ids") or [],"start_at":start_at,"end_at":end_at,"active":active,"blocked":bool(data.get("blocked"))}
 
+def coordination_rows(db):
+    return [dict(x) for x in db.execute("SELECT username,name,rank,active,created_at FROM coordination_staff ORDER BY name COLLATE NOCASE").fetchall()]
+
+def validate_coordination_username(username):
+    normalized=str(username or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9._-]{3,40}", normalized):
+        raise ValueError("Usuário inválido. Use de 3 a 40 caracteres (letras, números, ponto, hífen ou sublinhado).")
+    return normalized
+
 def admin_payload(db):
-    return {"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_subject_restriction":student_subject_restriction(db),"student_entry_authorization":student_entry_authorization(db),"authorization_history":setting_json(db,"authorization_history",[]) or [],"import_history":setting_json(db,"import_history",[]) or [],"score_history":setting_json(db,"score_history",[]) or [],"ranking_updated_at":setting_text(db,"ranking_updated_at")}
+    return {"subjects":subject_rows(db),"students":[dict(x) for x in db.execute("SELECT id,name,rank,observation FROM students ORDER BY name")],"scores":[dict(x) for x in db.execute("SELECT sc.*,sub.name subject,sub.exam_count,sub.grading_mode FROM scores sc JOIN subjects sub ON sub.id=sc.subject_id")],"ranking":ranking(db),"exams":[dict(x) for x in db.execute("SELECT * FROM exams ORDER BY date")],"student_entry_enabled":student_entry_enabled(db),"student_subject_restriction":student_subject_restriction(db),"student_entry_authorization":student_entry_authorization(db),"authorization_history":setting_json(db,"authorization_history",[]) or [],"import_history":setting_json(db,"import_history",[]) or [],"score_history":setting_json(db,"score_history",[]) or [],"ranking_updated_at":setting_text(db,"ranking_updated_at"),"coordination_staff":coordination_rows(db)}
 
 def exam_is_visible(exam, now=None):
     """Mantém a avaliação pública somente até duas horas após o horário agendado."""
@@ -314,6 +324,7 @@ def initialize():
         CREATE TABLE IF NOT EXISTS subjects(id INTEGER PRIMARY KEY,hours INTEGER NOT NULL,name TEXT UNIQUE NOT NULL,exam_count INTEGER NOT NULL,grading_mode TEXT NOT NULL DEFAULT 'normal');
         CREATE TABLE IF NOT EXISTS scores(student_id TEXT NOT NULL,subject_id INTEGER NOT NULL,exam1 REAL,exam2 REAL,work REAL,status TEXT,PRIMARY KEY(student_id,subject_id));
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS coordination_staff(username TEXT PRIMARY KEY,name TEXT NOT NULL,rank TEXT NOT NULL,salt TEXT NOT NULL,password_hash TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT (datetime('now')));
         """)
         columns = [x[1] for x in db.execute("PRAGMA table_info(students)")]
         if "observation" not in columns: db.execute("ALTER TABLE students ADD COLUMN observation TEXT NOT NULL DEFAULT ''")
@@ -645,8 +656,15 @@ class Handler(SimpleHTTPRequestHandler):
     def student(self):
         cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_student_session");session=STUDENT_SESSIONS.get(token.value if token else "")
         return session[0] if session and session[1]>time.time() else None
+    def coordination(self):
+        cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_coordination_session");session=COORDINATION_SESSIONS.get(token.value if token else "")
+        return session[0] if session and session[1]>time.time() else None
     def require_admin(self):
         user=self.admin()
+        if not user:self.output({"error":"Sessão expirada. Entre novamente."},401)
+        return user
+    def require_coordination(self):
+        user=self.coordination()
         if not user:self.output({"error":"Sessão expirada. Entre novamente."},401)
         return user
     def do_GET(self):
@@ -670,8 +688,24 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_admin():return
             with connect() as db:raw=notes_report_pdf(db)
             self.output_pdf(raw,f"relatorio-notas-{datetime.now().strftime('%Y-%m-%d')}.pdf");return
+        if path=="/api/coordination/session":
+            user=self.require_coordination()
+            if user:
+                with connect() as db:
+                    row=db.execute("SELECT username,name,rank FROM coordination_staff WHERE username=? AND active=1",(user,)).fetchone()
+                    if not row:self.output({"error":"Acesso desativado. Procure o administrador."},403);return
+                    self.output({"username":row["username"],"name":row["name"],"rank":row["rank"]})
+            return
+        if path=="/api/coordination/ranking":
+            if not self.require_coordination():return
+            with connect() as db:
+                row=db.execute("SELECT 1 FROM coordination_staff WHERE username=? AND active=1",(self.coordination(),)).fetchone()
+                if not row:self.output({"error":"Acesso desativado. Procure o administrador."},403);return
+                self.output({"ranking":ranking(db),"ranking_updated_at":setting_text(db,"ranking_updated_at")})
+            return
         if path=="/": self.path="/index.html"
-        elif path in ("/admin","/administracao"):self.path="/admin.html"
+        elif path in ("/admin","/administracao","/admin.html"):self.path="/painel.html"
+        elif path in ("/coordenacao","/coordenação"):self.path="/coordenacao.html"
         elif path not in PUBLIC_FILES:
             self.send_error(404, "Arquivo não encontrado")
             return
@@ -686,6 +720,14 @@ class Handler(SimpleHTTPRequestHandler):
             with connect() as db: row=db.execute("SELECT * FROM admins WHERE username=?",(data.get("username",""),)).fetchone()
             if not row or not verify(data.get("password",""),row["salt"],row["password_hash"]):self.output({"error":"Usuário ou senha inválidos."},401);return
             token=secrets.token_urlsafe(32);SESSIONS[token]=(row["username"],time.time()+28800);secure="; Secure" if COOKIE_SECURE else "";self.output({"username":row["username"],"must_change_password":bool(row["must_change"])},cookie=f"efas_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800{secure}");return
+        if self.path=="/api/coordination/login":
+            username=validate_coordination_username(data.get("username",""))
+            with connect() as db:
+                row=db.execute("SELECT * FROM coordination_staff WHERE username=? AND active=1",(username,)).fetchone()
+                if not row or not verify(data.get("password",""),row["salt"],row["password_hash"]):self.output({"error":"Usuário ou senha inválidos."},401);return
+            token=secrets.token_urlsafe(32);COORDINATION_SESSIONS[token]=(username,time.time()+28800);secure="; Secure" if COOKIE_SECURE else "";self.output({"username":row["username"],"name":row["name"],"rank":row["rank"]},cookie=f"efas_coordination_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800{secure}");return
+        if self.path=="/api/coordination/logout":
+            cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_coordination_session");COORDINATION_SESSIONS.pop(token.value if token else "",None);secure="; Secure" if COOKIE_SECURE else "";self.output({"ok":True},cookie=f"efas_coordination_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0{secure}");return
         if self.path=="/api/grades":
             with connect() as db:
                 student=db.execute("SELECT * FROM students WHERE id=?",(str(data.get("id","")),)).fetchone()
@@ -1067,6 +1109,31 @@ class Handler(SimpleHTTPRequestHandler):
                     expected_empty=status is None and exam1 is None and exam2 is None and work is None
                     if (expected_empty and confirmed) or (not expected_empty and not score_matches(confirmed,exam1,exam2,work,status)):
                         raise sqlite3.Error('A conferência exata da nota gravada não foi concluída.')
+                elif self.path=="/api/admin/coordination":
+                    username=validate_coordination_username(data.get("username",""))
+                    name=str(data.get("name","")).strip();rank=str(data.get("rank","")).strip();password=str(data.get("password",""))
+                    active=1 if str(data.get("active","1")).lower() not in ("0","false","off") else 0
+                    if not name:raise ValueError("Informe o nome completo do militar.")
+                    if not rank:raise ValueError("Informe o posto ou graduação.")
+                    existing=db.execute("SELECT username FROM coordination_staff WHERE username=?",(username,)).fetchone()
+                    if existing:
+                        if password:
+                            if len(password)<8:raise ValueError("A senha deve possuir pelo menos 8 caracteres.")
+                            salt,digest=password_hash(password);db.execute("UPDATE coordination_staff SET name=?,rank=?,salt=?,password_hash=?,active=? WHERE username=?",(name,rank,salt,digest,active,username))
+                        else:
+                            db.execute("UPDATE coordination_staff SET name=?,rank=?,active=? WHERE username=?",(name,rank,active,username))
+                    else:
+                        if len(password)<8:raise ValueError("Defina uma senha com pelo menos 8 caracteres para o novo acesso.")
+                        salt,digest=password_hash(password);db.execute("INSERT INTO coordination_staff(username,name,rank,salt,password_hash,active) VALUES(?,?,?,?,?,?)",(username,name,rank,salt,digest,active))
+                    db.commit()
+                    self.output({"ok":True,"coordination_staff":coordination_rows(db)});return
+                elif self.path=="/api/admin/coordination/delete":
+                    username=validate_coordination_username(data.get("username",""))
+                    if not db.execute("SELECT 1 FROM coordination_staff WHERE username=?",(username,)).fetchone():raise ValueError("Usuário da coordenação não encontrado.")
+                    db.execute("DELETE FROM coordination_staff WHERE username=?",(username,));db.commit()
+                    for token,session in list(COORDINATION_SESSIONS.items()):
+                        if session[0]==username:COORDINATION_SESSIONS.pop(token,None)
+                    self.output({"ok":True,"coordination_staff":coordination_rows(db)});return
                 elif self.path=="/api/admin/logout":
                     cookies=SimpleCookie(self.headers.get("Cookie"));token=cookies.get("efas_session");SESSIONS.pop(token.value if token else "",None);self.output({"ok":True},cookie="efas_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");return
                 else:self.output({"error":"Rota inexistente."},404);return

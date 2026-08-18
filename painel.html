@@ -42,6 +42,7 @@
         <button class="admin-nav-item" type="button" data-admin-view="grades"><span class="admin-nav-icon" aria-hidden="true">✎</span><span>Lançamento de notas</span></button>
         <button class="admin-nav-item" type="button" data-admin-view="calendar"><span class="admin-nav-icon" aria-hidden="true">◷</span><span>Calendário de avaliações</span></button>
         <button class="admin-nav-item" type="button" data-admin-view="ranking"><span class="admin-nav-icon" aria-hidden="true">#</span><span>Ranking</span></button>
+        <button class="admin-nav-item" type="button" data-admin-view="coordination"><span class="admin-nav-icon" aria-hidden="true">◉</span><span>Coordenação</span></button>
         <button class="admin-nav-item" type="button" data-admin-view="reports"><span class="admin-nav-icon" aria-hidden="true">▤</span><span>Relatórios</span></button>
         <button class="admin-nav-item" type="button" data-admin-view="settings"><span class="admin-nav-icon" aria-hidden="true">⚙</span><span>Configurações</span></button>
       </nav>
@@ -166,6 +167,27 @@
 
         <section class="admin-view" data-view="ranking" aria-labelledby="ranking-title" hidden>
           <div class="admin-view-heading"><div><p class="eyebrow dark">Desempenho</p><h2 id="ranking-title">Ranking completo do pelotão</h2><p>Classificação pelo percentual obtido sobre os pontos efetivamente distribuídos.</p></div><div class="heading-actions"><button id="ranking-refresh-button" class="button button-dark" type="button">Atualizar ranking</button><button id="pdf-report-button" class="button button-gold" type="button">Gerar relatório em PDF</button></div></div><p id="ranking-updated-at" class="ranking-updated-at" role="status"></p><p id="pdf-report-message" class="panel-message" role="status"></p><section class="admin-panel table-panel"><div id="ranking-data"></div></section>
+        </section>
+
+        <section class="admin-view" data-view="coordination" aria-labelledby="coordination-title" hidden>
+          <div class="admin-view-heading"><div><p class="eyebrow dark">Acessos restritos</p><h2 id="coordination-title">Militares da coordenação</h2><p>Cadastre usuários com acesso exclusivo ao ranking completo, incluindo observações sem ocultação. O login é feito em <a href="/coordenacao" target="_blank" rel="noopener">/coordenacao</a>.</p></div></div>
+          <form id="coordination-form" class="admin-panel compact-form-panel">
+            <div class="section-heading"><div><h3>Cadastrar ou atualizar acesso</h3><p>Deixe a senha em branco para manter a atual ao editar um usuário existente.</p></div></div>
+            <input id="coordination-edit-mode" type="hidden" value="">
+            <div class="responsive-form-grid">
+              <label>Usuário de acesso<input id="coordination-username" name="username" autocomplete="off" required pattern="[A-Za-z0-9._-]{3,40}" title="De 3 a 40 caracteres: letras, números, ponto, hífen ou sublinhado"></label>
+              <label>Nome completo<input id="coordination-name" name="name" required></label>
+              <label>Posto/graduação<input id="coordination-rank" name="rank" required></label>
+              <label>Senha<input id="coordination-password" name="password" type="password" minlength="8" autocomplete="new-password"></label>
+              <label class="preference-toggle coordination-active-toggle"><input id="coordination-active" name="active" type="checkbox" checked><span>Acesso ativo</span></label>
+            </div>
+            <div class="panel-actions">
+              <button class="button button-gold" type="submit">Salvar acesso</button>
+              <button id="coordination-cancel-edit" class="button button-outline-dark" type="button" hidden>Cancelar edição</button>
+            </div>
+            <p class="panel-message" role="status"></p>
+          </form>
+          <section class="admin-panel table-panel"><div id="coordination-data"></div></section>
         </section>
 
         <section class="admin-view" data-view="reports" aria-labelledby="reports-title" hidden>

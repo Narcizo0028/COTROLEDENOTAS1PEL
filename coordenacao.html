@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Coordenação | CFS — 1º Pelotão</title>
+  <link rel="stylesheet" href="styles.css?v=20260818-coordenacao">
+</head>
+<body class="admin-page admin-dashboard-page coordination-page">
+  <main id="coord-login-panel" class="admin-login-shell">
+    <a class="admin-login-brand" href="index.html">
+      <img src="assets/escudo-efas.png" alt="Escudo da EFAS" width="64" height="72">
+      <span><strong>Controle de Notas</strong><small>CFS • 1º Pelotão</small></span>
+    </a>
+    <section class="admin-login">
+      <p class="eyebrow dark">Acesso restrito à coordenação</p>
+      <h1>Entrar como militar da coordenação</h1>
+      <form id="coord-login-form" class="form-card">
+        <label for="coord-user">Usuário</label>
+        <input id="coord-user" autocomplete="username" required>
+        <label for="coord-password">Senha</label>
+        <input id="coord-password" type="password" autocomplete="current-password" required>
+        <p id="coord-login-message" class="form-message" role="alert"></p>
+        <button class="button button-gold full">Entrar</button>
+      </form>
+      <a class="admin-login-back" href="index.html">Voltar ao portal do discente</a>
+    </section>
+  </main>
+
+  <section id="coord-dashboard" class="coordination-app" hidden>
+    <header class="coordination-header">
+      <div class="coordination-header-start">
+        <img src="assets/escudo-efas.png" alt="Escudo da EFAS" width="44" height="50">
+        <div>
+          <p class="admin-breadcrumb">Coordenação EFAS</p>
+          <h1>Ranking completo do pelotão</h1>
+        </div>
+      </div>
+      <div class="coordination-header-tools">
+        <div class="coordination-identity">
+          <span class="admin-avatar" aria-hidden="true">C</span>
+          <span><strong id="coord-identity-name">Militar</strong><small id="coord-identity-rank">Coordenação</small></span>
+        </div>
+        <button id="coord-refresh-button" class="button button-outline-dark button-compact" type="button">Atualizar ranking</button>
+        <button id="coord-logout-button" class="button button-dark button-compact" type="button">Sair</button>
+      </div>
+    </header>
+
+    <main class="coordination-content">
+      <section class="admin-panel table-panel coordination-ranking-panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow dark">Consulta integral</p>
+            <h2>Classificação com observações</h2>
+            <p>Este acesso exibe nomes, matrículas e observações administrativas sem ocultação. Demais funções do sistema não estão disponíveis.</p>
+          </div>
+        </div>
+        <p id="coord-ranking-updated-at" class="ranking-updated-at" role="status"></p>
+        <div id="coord-ranking-data" aria-live="polite"></div>
+      </section>
+    </main>
+  </section>
+
+  <script src="coordenacao.js?v=20260818-coordenacao" defer></script>
+</body>
+</html>
