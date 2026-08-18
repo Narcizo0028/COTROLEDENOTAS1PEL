@@ -203,6 +203,26 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .panel-message { min-height: 1.3em; color: var(--success); font-size: .8rem; }
 .data-panel { margin-top: 24px; border-top-color: var(--blue-gray); }
 .data-panel h3 { margin-top: 28px; }
+/* Ranking: dimensões proporcionais ao conteúdo disponível, sem alterar sua estrutura. */
+#admin-tab-ranking .data-panel { width:100%; box-sizing:border-box; padding:clamp(18px,2vw,28px); }
+#admin-tab-ranking .data-panel .panel-title { gap:16px; }
+#admin-tab-ranking .data-panel .panel-title h2 { margin:0; font-size:clamp(1.3rem,2vw,1.5rem); }
+#admin-tab-ranking .data-panel > .section-note { margin:8px 0 0; font-size:clamp(.78rem,1vw,.88rem); }
+#admin-tab-ranking #ranking-data .table-wrap { margin-top:12px; }
+#admin-tab-ranking #ranking-data .grade-table { min-width:760px; margin-top:0; table-layout:fixed; }
+#admin-tab-ranking #ranking-data .grade-table th,
+#admin-tab-ranking #ranking-data .grade-table td { padding:clamp(11px,1.1vw,16px) clamp(8px,1vw,14px); vertical-align:middle; }
+#admin-tab-ranking #ranking-data .grade-table th:nth-child(1) { width:7%; }
+#admin-tab-ranking #ranking-data .grade-table th:nth-child(2) { width:31%; }
+#admin-tab-ranking #ranking-data .grade-table th:nth-child(3),
+#admin-tab-ranking #ranking-data .grade-table th:nth-child(4) { width:14%; }
+#admin-tab-ranking #ranking-data .grade-table th:nth-child(5) { width:9%; }
+#admin-tab-ranking #ranking-data .grade-table th:nth-child(6) { width:25%; }
+@media (max-width:700px) {
+  #admin-tab-ranking .data-panel { padding:16px; }
+  #admin-tab-ranking .data-panel .panel-title { gap:12px; }
+  #admin-tab-ranking #ranking-data .grade-table { min-width:650px; }
+}
 .compact-grid { grid-template-columns: .7fr 1fr 1.45fr; }
 .admin-panel textarea,.admin-panel select { width:100%; padding:9px 11px; border:1px solid #bbb6a7; border-radius:6px; background:#fff; font:inherit; }
 .score-fields,.schedule-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
