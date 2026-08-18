@@ -1145,3 +1145,31 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .restriction-controls { grid-template-columns: 1fr; }
   .restriction-controls .button { width: 100%; }
 }
+
+/* Painel exclusivo da coordenação */
+.coordination-page.coordination-app,
+.coordination-page #coord-dashboard { min-height: 100dvh; }
+.coordination-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 20px 24px;
+  background: #fff;
+  border-bottom: 1px solid var(--admin-border, #dde0da);
+}
+.coordination-header-start { display: flex; align-items: center; gap: 16px; }
+.coordination-header-start h1 { margin: 4px 0 0; font-size: clamp(1.35rem, 2.4vw, 1.85rem); }
+.coordination-header-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.coordination-identity { display: flex; align-items: center; gap: 10px; }
+.coordination-content { max-width: 1440px; margin: 0 auto; padding: 24px; }
+.coordination-ranking-panel .coordination-ranking-table td small { display: block; margin-top: 4px; color: var(--muted); }
+.coordination-ranking-table td[data-label="Observação"] { min-width: 220px; white-space: pre-wrap; }
+.coord-empty-note { color: var(--muted); }
+.coordination-active-toggle { align-self: end; }
+@media (max-width: 720px) {
+  .coordination-header { padding: 16px; }
+  .coordination-content { padding: 16px; }
+  .coordination-header-tools { width: 100%; justify-content: flex-start; }
+}
