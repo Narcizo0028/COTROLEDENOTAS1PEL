@@ -483,9 +483,9 @@ def ranking(db):
         ELSE COALESCE(sc.exam1,0)+COALESCE(sc.exam2,0)+COALESCE(sc.work,0) END),0) points,
       COALESCE(SUM(
         CASE WHEN sub.grading_mode='apt' THEN 0
-        WHEN sub.grading_mode='taf' THEN (CASE WHEN sc.exam1 IS NOT NULL THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2 IS NOT NULL THEN 3 ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 4 ELSE 0 END)
-        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN (CASE WHEN sc.exam2 IS NOT NULL THEN 6 ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 4 ELSE 0 END)
-        ELSE (CASE WHEN sc.exam1 IS NOT NULL AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN sc.exam2 IS NOT NULL THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN sc.work IS NOT NULL THEN 3 ELSE 0 END) END
+        WHEN sub.grading_mode='taf' THEN (CASE WHEN COALESCE(sc.exam1,0)>0 THEN 3 ELSE 0 END)+(CASE WHEN COALESCE(sc.exam2,0)>0 THEN 3 ELSE 0 END)+(CASE WHEN COALESCE(sc.work,0)>0 THEN 4 ELSE 0 END)
+        WHEN LOWER(sub.name) LIKE '%defesa pessoal%' THEN (CASE WHEN COALESCE(sc.exam2,0)>0 THEN 6 ELSE 0 END)+(CASE WHEN COALESCE(sc.work,0)>0 THEN 4 ELSE 0 END)
+        ELSE (CASE WHEN COALESCE(sc.exam1,0)>0 AND sub.exam_count=2 THEN 3 ELSE 0 END)+(CASE WHEN COALESCE(sc.exam2,0)>0 THEN CASE WHEN sub.exam_count=1 THEN 7 ELSE 4 END ELSE 0 END)+(CASE WHEN COALESCE(sc.work,0)>0 THEN 3 ELSE 0 END) END
       ),0) distributed
       FROM students s LEFT JOIN scores sc ON sc.student_id=s.id LEFT JOIN subjects sub ON sub.id=sc.subject_id
       GROUP BY s.id""").fetchall()
