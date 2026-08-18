@@ -502,13 +502,11 @@ def ranking(db):
         item["percentage"]=calcular_aproveitamento(item["points"], item["distributed"])
         result.append(item)
 
-    # O ranking usa a média numérica, jamais sua representação formatada.
-    result.sort(key=lambda item: (-item["average"], -item["points"], -item["distributed"], str(item["name"]).casefold()))
-    last=None; position=0
-    for index,row in enumerate(result,1):
-        tie=(row["average"],row["points"],row["distributed"])
-        if last is None or tie!=last: position=index
-        last=tie;row["position"]=position
+    # Classificação: pontos obtidos; em empate, média numérica e nome em ordem alfabética.
+    # Pontos distribuídos não participam da ordenação.
+    result.sort(key=lambda item: (-item["points"], -item["average"], str(item["name"]).casefold()))
+    for position,row in enumerate(result,1):
+        row["position"]=position
     return result
 
 def student_ranking_view(rows):
